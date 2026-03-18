@@ -5,6 +5,7 @@ import StatCard from "../components/dashboard/StatCard";
 import BotStatusToggle from "../components/dashboard/BotStatusToggle";
 import PositionsTable from "../components/dashboard/PositionsTable";
 import RecentTrades from "../components/dashboard/RecentTrades";
+import ChartWidget from "../components/chart/ChartWidget";
 import { Wallet, TrendingUp, BarChart3, Zap } from "lucide-react";
 
 export default function Dashboard() {
@@ -84,6 +85,14 @@ export default function Dashboard() {
         enabled={currentSettings?.bot_enabled || false}
         onToggle={() => toggleBot.mutate()}
         loading={toggleBot.isPending}
+      />
+
+      {/* Candlestick chart */}
+      <ChartWidget
+        symbols={currentSettings?.watchlist?.length > 0 ? currentSettings.watchlist : ["SPY", "QQQ", "AAPL", "TSLA"]}
+        defaultSymbol={currentSettings?.watchlist?.[0] || "SPY"}
+        height={260}
+        compact
       />
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
