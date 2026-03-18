@@ -57,46 +57,8 @@ async function placeOrder(symbol, side, qty) {
   return await res.json();
 }
 
-// Consensus scoring: returns a score 0-4 and signals breakdown
-function scoreConsensus(prices, fast_ma_period, slow_ma_period) {
-  if (prices.length < slow_ma_period + 1) return { score: 0, direction: null };
-
-  const prevPrices = prices.slice(0, -1);
-  const currFastMA = calculateMA(prices, fast_ma_period);
-  const currSlowMA = calculateMA(prices, slow_ma_period);
-  const prevFastMA = calculateMA(prevPrices, fast_ma_period);
-  const prevSlowMA = calculateMA(prevPrices, slow_ma_period);
-
-  if (!currFastMA || !currSlowMA || !prevFastMA || !prevSlowMA) return { score: 0, direction: null };
-
-  const latestPrice = prices[prices.length - 1];
-  const prevPrice = prices[prices.length - 2];
-
-  // Signal 1: MA Crossover
-  const maCross = prevFastMA <= prevSlowMA && currFastMA > currSlowMA ? 'buy'
-    : prevFastMA >= prevSlowMA && currFastMA < currSlowMA ? 'sell' : null;
-
-  // Signal 2: Price above/below slow MA
-  const priceTrend = latestPrice > currSlowMA ? 'buy' : latestPrice < currSlowMA ? 'sell' : null;
-
-  // Signal 3: Fast MA slope (momentum)
-  const fastSlope = currFastMA > prevFastMA ? 'buy' : currFastMA < prevFastMA ? 'sell' : null;
-
-  // Signal 4: Price momentum (last bar direction)
-  const priceMomentum = latestPrice > prevPrice ? 'buy' : latestPrice < prevPrice ? 'sell' : null;
-
-  const signals = [maCross, priceTrend, fastSlope, priceMomentum];
-  const buyCount = signals.filter(s => s === 'buy').length;
-  const sellCount = signals.filter(s => s === 'sell').length;
-
-  return {
-    score: Math.max(buyCount, sellCount),
-    direction: buyCount > sellCount ? 'buy' : sellCount > buyCount ? 'sell' : null,
-    currFastMA, currSlowMA, signals,
-  };
-}
-
-async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, strategyTag) {
+// Simple MA crossover strategy gated by consensus score for BUY
+async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, strategyTag, consensusScore, consensus_threshold) {
   const prevPrices = prices.slice(0, -1);
   const currFastMA = calculateMA(prices, fast_ma_period);
   const currSlowMA = calculateMA(prices, slow_ma_period);
@@ -113,7 +75,13 @@ async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma
   const goldenCross = prevFastMA <= prevSlowMA && currFastMA > currSlowMA;
   const deathCross = prevFastMA >= prevSlowMA && currFastMA < currSlowMA;
 
+  const scoreLabel = consensusScore !== null ? `consensus ${consensusScore}/4` : 'no consensus data';
+
   if (goldenCross && !hasPosition) {
+    // Gate BUY on consensus score
+    if (consensusScore !== null && consensusScore < consensus_threshold) {
+      return { symbol, action: 'hold', message: `Golden cross but ${scoreLabel} below threshold (${consensus_threshold})`, strategy: strategyTag };
+    }
     const qty = Math.floor(max_per_trade / latestPrice);
     if (qty < 1) return { symbol, message: 'Price too high for max_per_trade limit' };
     try {
@@ -122,14 +90,14 @@ async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma
       await base44.asServiceRole.entities.Trade.create({
         symbol, action: 'buy', quantity: qty, price: latestPrice, total_value: totalValue,
         status: 'executed', strategy: strategyTag,
-        reason: `[${strategyTag}] Golden cross: fast MA (${currFastMA.toFixed(2)}) crossed above slow MA (${currSlowMA.toFixed(2)})`,
+        reason: `[${strategyTag}] Golden cross: fast MA (${currFastMA.toFixed(2)}) crossed above slow MA (${currSlowMA.toFixed(2)}) | ${scoreLabel}`,
         executed_at: new Date().toISOString(),
       });
       await base44.asServiceRole.entities.Position.create({
         symbol, quantity: qty, avg_entry_price: latestPrice, current_price: latestPrice,
         market_value: totalValue, unrealized_pl: 0, unrealized_pl_pct: 0,
       });
-      return { symbol, action: 'buy', qty, price: latestPrice, strategy: strategyTag };
+      return { symbol, action: 'buy', qty, price: latestPrice, strategy: strategyTag, consensus_score: consensusScore };
     } catch (e) {
       await base44.asServiceRole.entities.Trade.create({
         symbol, action: 'buy', quantity: 0, price: latestPrice, total_value: 0,
@@ -138,6 +106,10 @@ async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma
       return { symbol, error: e.message };
     }
   } else if (deathCross && hasPosition) {
+    // Gate SELL: only execute if consensus score <= 1
+    if (consensusScore !== null && consensusScore > 1) {
+      return { symbol, action: 'hold', message: `Death cross but ${scoreLabel} still above 1 — holding`, strategy: strategyTag };
+    }
     const qty = parseFloat(existingPosition.qty);
     const avgEntry = parseFloat(existingPosition.avg_entry_price);
     try {
@@ -147,14 +119,14 @@ async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma
       await base44.asServiceRole.entities.Trade.create({
         symbol, action: 'sell', quantity: qty, price: latestPrice, total_value: totalValue,
         result: tradeResult, status: 'executed', strategy: strategyTag,
-        reason: `[${strategyTag}] Death cross: fast MA (${currFastMA.toFixed(2)}) crossed below slow MA (${currSlowMA.toFixed(2)})`,
+        reason: `[${strategyTag}] Death cross: fast MA (${currFastMA.toFixed(2)}) crossed below slow MA (${currSlowMA.toFixed(2)}) | ${scoreLabel}`,
         executed_at: new Date().toISOString(),
       });
       const positionRecords = await base44.asServiceRole.entities.Position.filter({ symbol });
       for (const pr of positionRecords) {
         await base44.asServiceRole.entities.Position.delete(pr.id);
       }
-      return { symbol, action: 'sell', qty, price: latestPrice, result: tradeResult, strategy: strategyTag };
+      return { symbol, action: 'sell', qty, price: latestPrice, result: tradeResult, strategy: strategyTag, consensus_score: consensusScore };
     } catch (e) {
       await base44.asServiceRole.entities.Trade.create({
         symbol, action: 'sell', quantity: qty, price: latestPrice, total_value: qty * latestPrice,
@@ -179,18 +151,28 @@ async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma
   }
 }
 
-async function runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, strategyTag) {
-  const { score, direction, currFastMA, currSlowMA } = scoreConsensus(prices, fast_ma_period, slow_ma_period);
+// Consensus strategy: requires total_score >= threshold to BUY, <= 1 to SELL
+async function runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, strategyTag, consensusScore, consensus_threshold) {
+  const prevPrices = prices.slice(0, -1);
+  const currFastMA = calculateMA(prices, fast_ma_period);
+  const currSlowMA = calculateMA(prices, slow_ma_period);
+  const prevFastMA = calculateMA(prevPrices, fast_ma_period);
+  const prevSlowMA = calculateMA(prevPrices, slow_ma_period);
 
-  if (score < 3 || !direction) {
-    return { symbol, action: 'hold', message: `Consensus score ${score}/4 — no trade`, strategy: strategyTag };
+  if (!currFastMA || !currSlowMA || !prevFastMA || !prevSlowMA) {
+    return { symbol, message: 'Could not calculate MAs', strategy: strategyTag };
   }
 
   const latestPrice = prices[prices.length - 1];
   const existingPosition = openPositions.find((p) => p.symbol === symbol);
   const hasPosition = existingPosition && parseFloat(existingPosition.qty) > 0;
+  const goldenCross = prevFastMA <= prevSlowMA && currFastMA > currSlowMA;
+  const deathCross = prevFastMA >= prevSlowMA && currFastMA < currSlowMA;
 
-  if (direction === 'buy' && !hasPosition) {
+  const score = consensusScore ?? 0;
+  const scoreLabel = `consensus ${score}/4`;
+
+  if (goldenCross && !hasPosition && score >= consensus_threshold) {
     const qty = Math.floor(max_per_trade / latestPrice);
     if (qty < 1) return { symbol, message: 'Price too high for max_per_trade limit' };
     try {
@@ -199,7 +181,7 @@ async function runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow
       await base44.asServiceRole.entities.Trade.create({
         symbol, action: 'buy', quantity: qty, price: latestPrice, total_value: totalValue,
         status: 'executed', strategy: strategyTag,
-        reason: `[${strategyTag}] Consensus ${score}/4: buy signal`,
+        reason: `[${strategyTag}] Golden cross confirmed by ${scoreLabel} (threshold: ${consensus_threshold})`,
         executed_at: new Date().toISOString(),
       });
       await base44.asServiceRole.entities.Position.create({
@@ -214,7 +196,7 @@ async function runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow
       });
       return { symbol, error: e.message };
     }
-  } else if (direction === 'sell' && hasPosition) {
+  } else if (deathCross && hasPosition && score <= 1) {
     const qty = parseFloat(existingPosition.qty);
     const avgEntry = parseFloat(existingPosition.avg_entry_price);
     try {
@@ -224,7 +206,7 @@ async function runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow
       await base44.asServiceRole.entities.Trade.create({
         symbol, action: 'sell', quantity: qty, price: latestPrice, total_value: totalValue,
         result: tradeResult, status: 'executed', strategy: strategyTag,
-        reason: `[${strategyTag}] Consensus ${score}/4: sell signal`,
+        reason: `[${strategyTag}] Death cross confirmed by ${scoreLabel} (sell threshold: ≤1)`,
         executed_at: new Date().toISOString(),
       });
       const positionRecords = await base44.asServiceRole.entities.Position.filter({ symbol });
@@ -241,7 +223,7 @@ async function runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow
     }
   }
 
-  return { symbol, action: 'hold', score, strategy: strategyTag };
+  return { symbol, action: 'hold', score, fast_ma: currFastMA.toFixed(2), slow_ma: currSlowMA.toFixed(2), strategy: strategyTag };
 }
 
 Deno.serve(async (req) => {
@@ -269,6 +251,7 @@ Deno.serve(async (req) => {
       fast_ma_period = 9,
       slow_ma_period = 21,
       strategy_mode = 'simple',
+      consensus_threshold = 3,
     } = settings;
 
     if (watchlist.length === 0) return Response.json({ message: 'Watchlist is empty.' });
@@ -284,6 +267,13 @@ Deno.serve(async (req) => {
         message: `Daily loss limit of $${daily_loss_limit} hit. Bot stopped for today.`,
         daily_loss: dailyLoss,
       });
+    }
+
+    // Load latest ConsensusScores for gating
+    const allScores = await base44.asServiceRole.entities.ConsensusScore.list('-scored_at', 200);
+    const consensusMap = {};
+    for (const cs of allScores) {
+      if (!consensusMap[cs.symbol]) consensusMap[cs.symbol] = cs;
     }
 
     const openPositions = await getPositions();
@@ -304,17 +294,18 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      const csScore = consensusMap[symbol]?.total_score ?? null;
+
       if (strategy_mode === 'simple') {
-        const r = await runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, 'Simple');
+        const r = await runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, 'Simple', csScore, consensus_threshold);
         results.push(r);
       } else if (strategy_mode === 'consensus') {
-        const r = await runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, 'Consensus');
+        const r = await runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, 'Consensus', csScore, consensus_threshold);
         results.push(r);
       } else if (strategy_mode === 'both') {
-        // Use half budget for each so total exposure stays the same
         const halfBudget = max_per_trade / 2;
-        const rSimple = await runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, halfBudget, openPositions, 'Simple');
-        const rConsensus = await runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, halfBudget, openPositions, 'Consensus');
+        const rSimple = await runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, halfBudget, openPositions, 'Simple', csScore, consensus_threshold);
+        const rConsensus = await runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, halfBudget, openPositions, 'Consensus', csScore, consensus_threshold);
         results.push(rSimple, rConsensus);
       }
     }
