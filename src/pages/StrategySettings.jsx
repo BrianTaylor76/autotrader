@@ -210,6 +210,27 @@ export default function StrategySettings() {
         </p>
       </Card>
 
+      <Card className="bg-card border-border p-6 space-y-5">
+        <div className="flex items-center gap-2 text-foreground">
+          <Layers className="w-4 h-4 text-primary" />
+          <h3 className="font-semibold">Consensus Gate</h3>
+        </div>
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground uppercase tracking-wider">Consensus Threshold (0–4)</Label>
+          <Input
+            type="number"
+            min={0}
+            max={4}
+            value={form.consensus_threshold}
+            onChange={(e) => setForm({ ...form, consensus_threshold: parseInt(e.target.value) || 0 })}
+            className="bg-secondary border-border font-mono max-w-[120px]"
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          A BUY is only executed when the global consensus score meets or exceeds this threshold. A SELL is only executed when the score is ≤ 1. Set to 0 to disable consensus gating.
+        </p>
+      </Card>
+
       <Button
         onClick={() => saveMutation.mutate()}
         disabled={saveMutation.isPending}
