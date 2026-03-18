@@ -110,17 +110,17 @@ export default function SignalConsole() {
 
   async function handleRefreshAll() {
     setRefreshing(true);
-    const steps = [
-      { fn: "fetchARKSignals", label: "Fetching ARK signals…" },
-      { fn: "fetchCongressSignals", label: "Fetching Congress signals…" },
-      { fn: "fetchSentimentSignals", label: "Fetching sentiment signals…" },
-      { fn: "scoreConsensus", label: "Scoring consensus…" },
-    ];
+    setRefreshStep("Fetching all signals…");
 
-    for (const step of steps) {
-      setRefreshStep(step.label);
-      await base44.functions.invoke(step.fn, {});
-    }
+    // Fetch all 3 signal sources in parallel, then score
+    await Promise.all([
+      base44.functions.invoke("fetchARKSignals", {}),
+      base44.functions.invoke("fetchCongressSignals", {}),
+      base44.functions.invoke("fetchSentimentSignals", {}),
+    ]);
+
+    setRefreshStep("Scoring consensus…");
+    await base44.functions.invoke("scoreConsensus", {});
 
     setRefreshStep("");
     setRefreshing(false);
