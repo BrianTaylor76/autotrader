@@ -48,6 +48,10 @@ export default function Dashboard() {
 
   const portfolioPct = portfolioValue > 0 ? (totalUnrealizedPL / (portfolioValue - totalUnrealizedPL)) * 100 : 0;
 
+  const simplePL = trades.filter((t) => t.strategy === "Simple").reduce((sum, t) => sum + (t.result || 0), 0);
+  const consensusPL = trades.filter((t) => t.strategy === "Consensus").reduce((sum, t) => sum + (t.result || 0), 0);
+  const strategyMode = currentSettings?.strategy_mode || "simple";
+
   return (
     <div className="space-y-6">
       <div>
