@@ -1,10 +1,11 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, History, Settings, Key, Activity, TrendingUp, LineChart } from "lucide-react";
+import { LayoutDashboard, History, Settings, Key, Activity, TrendingUp, LineChart, Radar } from "lucide-react";
 
 const navItems = [
   { path: "/Dashboard", label: "Dashboard", icon: LayoutDashboard },
   { path: "/Charts", label: "Charts", icon: LineChart },
+  { path: "/SignalConsole", label: "Signal Console", icon: Radar },
   { path: "/TradeHistory", label: "Trade History", icon: History },
   { path: "/StrategySettings", label: "Strategy", icon: Settings },
   { path: "/ApiSettings", label: "API Keys", icon: Key },
