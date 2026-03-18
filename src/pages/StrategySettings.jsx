@@ -21,6 +21,7 @@ export default function StrategySettings() {
     slow_ma_period: 21,
     bot_enabled: false,
     strategy_mode: "simple",
+    consensus_threshold: 3,
   });
 
   const { data: settings = [], isLoading } = useQuery({
@@ -40,6 +41,7 @@ export default function StrategySettings() {
         slow_ma_period: current.slow_ma_period || 21,
         bot_enabled: current.bot_enabled || false,
         strategy_mode: current.strategy_mode || "simple",
+        consensus_threshold: current.consensus_threshold ?? 3,
       });
     }
   }, [current]);
@@ -205,6 +207,39 @@ export default function StrategySettings() {
         </div>
         <p className="text-xs text-muted-foreground">
           Bot buys when the fast MA crosses above the slow MA, and sells when it crosses below.
+        </p>
+      </Card>
+
+      <Card className="bg-card border-border p-6 space-y-5">
+        <div className="flex items-center gap-2 text-foreground">
+          <Layers className="w-4 h-4 text-primary" />
+          <h3 className="font-semibold">Consensus Gate</h3>
+        </div>
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground uppercase tracking-wider">
+            Buy Threshold (min score out of 4)
+          </Label>
+          <div className="flex items-center gap-3">
+            <Input
+              type="number"
+              min={0}
+              max={4}
+              value={form.consensus_threshold}
+              onChange={(e) => setForm({ ...form, consensus_threshold: parseInt(e.target.value) || 0 })}
+              className="bg-secondary border-border font-mono w-24"
+            />
+            <div className="flex gap-1">
+              {[0,1,2,3].map((i) => (
+                <div
+                  key={i}
+                  className={`h-2 w-8 rounded-full ${i < form.consensus_threshold ? "bg-primary" : "bg-secondary"}`}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Buys require ≥ this many bullish signals (ARK, Congress, Sentiment, MA). Sells require ≤ 1.
         </p>
       </Card>
 
