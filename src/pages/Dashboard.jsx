@@ -54,7 +54,7 @@ export default function Dashboard() {
         <p className="text-sm text-muted-foreground mt-1">Monitor your portfolio and bot activity</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 md:gap-4">
         <StatCard
           title="Portfolio Value"
           value={`$${portfolioValue.toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
