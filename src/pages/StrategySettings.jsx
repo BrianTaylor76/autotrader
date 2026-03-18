@@ -92,6 +92,33 @@ export default function StrategySettings() {
         <p className="text-sm text-muted-foreground mt-1">Configure your moving average crossover strategy</p>
       </div>
 
+      <Card className="bg-card border-border p-6 space-y-4">
+        <div className="flex items-center gap-2 text-foreground">
+          <Layers className="w-4 h-4 text-primary" />
+          <h3 className="font-semibold">Strategy Mode</h3>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { value: "simple", label: "Simple", desc: "MA Crossover only" },
+            { value: "consensus", label: "Consensus", desc: "4-signal, 3/4 threshold" },
+            { value: "both", label: "Both", desc: "Run both, split budget" },
+          ].map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setForm({ ...form, strategy_mode: opt.value })}
+              className={`p-3 rounded-lg border text-left transition-all ${
+                form.strategy_mode === opt.value
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border bg-secondary/30 text-muted-foreground hover:border-border/80 hover:text-foreground"
+              }`}
+            >
+              <p className="font-semibold text-sm">{opt.label}</p>
+              <p className="text-[11px] mt-0.5 opacity-80">{opt.desc}</p>
+            </button>
+          ))}
+        </div>
+      </Card>
+
       <Card className="bg-card border-border p-6 space-y-5">
         <div className="flex items-center gap-2 text-foreground">
           <ListFilter className="w-4 h-4 text-primary" />

@@ -76,8 +76,8 @@ export default function TradeHistory() {
         <p className="text-sm text-muted-foreground mt-1">Complete log of all executed trades</p>
       </div>
 
-      <div className="flex gap-2">
-        <div className="relative flex-1">
+      <div className="flex flex-wrap gap-2">
+        <div className="relative flex-1 min-w-[140px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="Search symbol..."
@@ -87,13 +87,23 @@ export default function TradeHistory() {
           />
         </div>
         <Select value={actionFilter} onValueChange={setActionFilter}>
-          <SelectTrigger className="w-28 bg-card border-border shrink-0">
+          <SelectTrigger className="w-24 bg-card border-border shrink-0">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All</SelectItem>
             <SelectItem value="buy">Buy</SelectItem>
             <SelectItem value="sell">Sell</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={strategyFilter} onValueChange={setStrategyFilter}>
+          <SelectTrigger className="w-32 bg-card border-border shrink-0">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Strategies</SelectItem>
+            <SelectItem value="simple">Simple</SelectItem>
+            <SelectItem value="consensus">Consensus</SelectItem>
           </SelectContent>
         </Select>
       </div>
