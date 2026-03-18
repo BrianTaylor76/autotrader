@@ -112,11 +112,10 @@ async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma
   const hasPosition = existingPosition && parseFloat(existingPosition.qty) > 0;
   const goldenCross = prevFastMA <= prevSlowMA && currFastMA > currSlowMA;
   const deathCross = prevFastMA >= prevSlowMA && currFastMA < currSlowMA;
-
-  const scoreNote = totalScore !== null ? ` | Consensus: ${totalScore}/4` : '';
+  const scoreLabel = totalScore !== null ? ` | Consensus ${totalScore}/4` : ' | No consensus score';
 
   if (goldenCross && !hasPosition) {
-    // Gate: only buy if consensus score meets threshold (or no score available yet)
+    // Gate BUY on consensus threshold
     if (totalScore !== null && totalScore < consensus_threshold) {
       return { symbol, action: 'skipped', reason: `Golden cross but consensus score ${totalScore}/4 below threshold ${consensus_threshold}`, strategy: strategyTag };
     }
@@ -128,7 +127,7 @@ async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma
       await base44.asServiceRole.entities.Trade.create({
         symbol, action: 'buy', quantity: qty, price: latestPrice, total_value: totalValue,
         status: 'executed', strategy: strategyTag,
-        reason: `[${strategyTag}] Golden cross: fast MA (${currFastMA.toFixed(2)}) crossed above slow MA (${currSlowMA.toFixed(2)})${scoreNote}`,
+        reason: `[${strategyTag}] Golden cross: fast MA (${currFastMA.toFixed(2)}) crossed above slow MA (${currSlowMA.toFixed(2)})${scoreLabel}`,
         executed_at: new Date().toISOString(),
       });
       await base44.asServiceRole.entities.Position.create({
@@ -144,6 +143,10 @@ async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma
       return { symbol, error: e.message };
     }
   } else if (deathCross && hasPosition) {
+    // Gate SELL: only execute if consensus score <= 1
+    if (totalScore !== null && totalScore > 1) {
+      return { symbol, action: 'skipped', reason: `Death cross but consensus score ${totalScore}/4 still high — holding`, strategy: strategyTag };
+    }
     const qty = parseFloat(existingPosition.qty);
     const avgEntry = parseFloat(existingPosition.avg_entry_price);
     try {
@@ -153,7 +156,7 @@ async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma
       await base44.asServiceRole.entities.Trade.create({
         symbol, action: 'sell', quantity: qty, price: latestPrice, total_value: totalValue,
         result: tradeResult, status: 'executed', strategy: strategyTag,
-        reason: `[${strategyTag}] Death cross: fast MA (${currFastMA.toFixed(2)}) crossed below slow MA (${currSlowMA.toFixed(2)})`,
+        reason: `[${strategyTag}] Death cross: fast MA (${currFastMA.toFixed(2)}) crossed below slow MA (${currSlowMA.toFixed(2)})${scoreLabel}`,
         executed_at: new Date().toISOString(),
       });
       const positionRecords = await base44.asServiceRole.entities.Position.filter({ symbol });
