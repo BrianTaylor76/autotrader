@@ -89,12 +89,14 @@ Deno.serve(async (req) => {
     }
 
     // Load all signals + price data fully in parallel
+    // Cap bar fetch to avoid timeouts — daily bars, short timeout per symbol
     const [arkSignals, congressSignals, sentimentSignals, existing, ...priceArrays] = await Promise.all([
       base44.asServiceRole.entities.ARKSignal.list('-created_date', 500),
       base44.asServiceRole.entities.CongressSignal.list('-created_date', 1000),
       base44.asServiceRole.entities.SentimentSignal.list('-created_date', 200),
       base44.asServiceRole.entities.ConsensusScore.list('-scored_at', 200),
-      ...watchlist.map(sym => fetchDailyBars(sym, slow_ma + 5)),
+      // Use fewer bars to speed up — enough for MA calculation
+      ...watchlist.map(sym => fetchDailyBars(sym, Math.min(slow_ma + 3, 30))),
     ]);
 
     const arkSymbolSet = new Set(arkSignals.map(s => s.symbol.toUpperCase()));
