@@ -105,7 +105,7 @@ export default function Dashboard() {
       <BotStatusToggle
         enabled={currentSettings?.bot_enabled || false}
         onToggle={() => toggleBot.mutate()}
-        loading={toggleBot.isPending}
+        loading={toggleBot.isPending || !currentSettings}
       />
 
       {/* Candlestick chart */}
