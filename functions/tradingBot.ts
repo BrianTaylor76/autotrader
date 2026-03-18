@@ -200,7 +200,12 @@ async function runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow
   const existingPosition = openPositions.find((p) => p.symbol === symbol);
   const hasPosition = existingPosition && parseFloat(existingPosition.qty) > 0;
 
+  const scoreNote = totalScore !== null ? ` | ConsensusScore: ${totalScore}/4` : '';
+
   if (direction === 'buy' && !hasPosition) {
+    if (totalScore !== null && totalScore < consensus_threshold) {
+      return { symbol, action: 'skipped', reason: `Consensus strategy buy blocked — consensus score ${totalScore}/4 below threshold`, strategy: strategyTag };
+    }
     const qty = Math.floor(max_per_trade / latestPrice);
     if (qty < 1) return { symbol, message: 'Price too high for max_per_trade limit' };
     try {
@@ -209,7 +214,7 @@ async function runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow
       await base44.asServiceRole.entities.Trade.create({
         symbol, action: 'buy', quantity: qty, price: latestPrice, total_value: totalValue,
         status: 'executed', strategy: strategyTag,
-        reason: `[${strategyTag}] Consensus ${score}/4: buy signal`,
+        reason: `[${strategyTag}] Consensus ${score}/4: buy signal${scoreNote}`,
         executed_at: new Date().toISOString(),
       });
       await base44.asServiceRole.entities.Position.create({
