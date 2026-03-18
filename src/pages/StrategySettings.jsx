@@ -41,7 +41,6 @@ export default function StrategySettings() {
         slow_ma_period: current.slow_ma_period || 21,
         bot_enabled: current.bot_enabled || false,
         strategy_mode: current.strategy_mode || "simple",
-        consensus_threshold: current.consensus_threshold ?? 3,
       });
     }
   }, [current]);
@@ -208,27 +207,6 @@ export default function StrategySettings() {
         <p className="text-xs text-muted-foreground">
           Bot buys when the fast MA crosses above the slow MA, and sells when it crosses below.
         </p>
-      </Card>
-
-      <Card className="bg-card border-border p-6 space-y-5">
-        <div className="flex items-center gap-2 text-foreground">
-          <Layers className="w-4 h-4 text-primary" />
-          <h3 className="font-semibold">Consensus Threshold</h3>
-        </div>
-        <div className="space-y-2">
-          <Label className="text-xs text-muted-foreground uppercase tracking-wider">Min Score to Trade (0–4)</Label>
-          <Input
-            type="number"
-            min={0}
-            max={4}
-            value={form.consensus_threshold}
-            onChange={(e) => setForm({ ...form, consensus_threshold: parseInt(e.target.value) ?? 3 })}
-            className="bg-secondary border-border font-mono w-32"
-          />
-          <p className="text-xs text-muted-foreground">
-            Bot will only BUY when consensus score ≥ this value, and only SELL when score ≤ 1.
-          </p>
-        </div>
       </Card>
 
       <Button
