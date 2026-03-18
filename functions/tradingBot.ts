@@ -113,7 +113,13 @@ async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma
   const goldenCross = prevFastMA <= prevSlowMA && currFastMA > currSlowMA;
   const deathCross = prevFastMA >= prevSlowMA && currFastMA < currSlowMA;
 
+  const scoreNote = totalScore !== null ? ` | Consensus: ${totalScore}/4` : '';
+
   if (goldenCross && !hasPosition) {
+    // Gate: only buy if consensus score meets threshold (or no score available yet)
+    if (totalScore !== null && totalScore < consensus_threshold) {
+      return { symbol, action: 'skipped', reason: `Golden cross but consensus score ${totalScore}/4 below threshold ${consensus_threshold}`, strategy: strategyTag };
+    }
     const qty = Math.floor(max_per_trade / latestPrice);
     if (qty < 1) return { symbol, message: 'Price too high for max_per_trade limit' };
     try {
@@ -122,7 +128,7 @@ async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma
       await base44.asServiceRole.entities.Trade.create({
         symbol, action: 'buy', quantity: qty, price: latestPrice, total_value: totalValue,
         status: 'executed', strategy: strategyTag,
-        reason: `[${strategyTag}] Golden cross: fast MA (${currFastMA.toFixed(2)}) crossed above slow MA (${currSlowMA.toFixed(2)})`,
+        reason: `[${strategyTag}] Golden cross: fast MA (${currFastMA.toFixed(2)}) crossed above slow MA (${currSlowMA.toFixed(2)})${scoreNote}`,
         executed_at: new Date().toISOString(),
       });
       await base44.asServiceRole.entities.Position.create({
