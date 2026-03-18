@@ -36,15 +36,7 @@ Deno.serve(async (req) => {
       volume: b.v,
     }));
 
-    // Latest quote for real-time price
-    const quoteUrl = `${ALPACA_DATA_URL}/v2/stocks/${symbol}/quotes/latest?feed=iex`;
-    const quoteRes = await fetch(quoteUrl, { headers });
-    let latestPrice = bars.length > 0 ? bars[bars.length - 1].close : null;
-    if (quoteRes.ok) {
-      const quoteData = await quoteRes.json();
-      const q = quoteData.quote;
-      if (q) latestPrice = (q.ap + q.bp) / 2;
-    }
+    const latestPrice = bars.length > 0 ? bars[bars.length - 1].close : null;
 
     return Response.json({ bars, latestPrice, symbol });
   } catch (error) {
