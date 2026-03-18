@@ -99,15 +99,18 @@ Deno.serve(async (req) => {
       scoreSymbol(symbol, priceArrays[idx], fast_ma, slow_ma, arkSymbolSet, congressSignals, sentimentSignals)
     );
 
-    // Delete old consensus scores + create new ones — all in parallel
+    // Upsert: update existing records or create new ones — all in parallel
     const existing = await base44.asServiceRole.entities.ConsensusScore.list('-scored_at', 200);
-    await Promise.all(existing.map(e => base44.asServiceRole.entities.ConsensusScore.delete(e.id)));
-    await Promise.all(results.map(r =>
-      base44.asServiceRole.entities.ConsensusScore.create({
-        ...r,
-        scored_at: new Date().toISOString(),
-      })
-    ));
+    const existingBySymbol = Object.fromEntries(existing.map(e => [e.symbol.toUpperCase(), e]));
+
+    await Promise.all(results.map(r => {
+      const prev = existingBySymbol[r.symbol.toUpperCase()];
+      const payload = { ...r, scored_at: new Date().toISOString() };
+      if (prev) {
+        return base44.asServiceRole.entities.ConsensusScore.update(prev.id, payload);
+      }
+      return base44.asServiceRole.entities.ConsensusScore.create(payload);
+    }));
 
     return Response.json({ success: true, results, scored_at: new Date().toISOString() });
   } catch (error) {
