@@ -85,6 +85,23 @@ export default function Dashboard() {
         />
       </div>
 
+      {(strategyMode === "both") && (
+        <div className="grid grid-cols-2 gap-3 md:gap-4">
+          <StatCard
+            title="Simple P&L"
+            value={`${simplePL >= 0 ? "+" : ""}$${simplePL.toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
+            icon={TrendingUp}
+            variant={simplePL >= 0 ? "gain" : "loss"}
+          />
+          <StatCard
+            title="Consensus P&L"
+            value={`${consensusPL >= 0 ? "+" : ""}$${consensusPL.toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
+            icon={TrendingUp}
+            variant={consensusPL >= 0 ? "gain" : "loss"}
+          />
+        </div>
+      )}
+
       <BotStatusToggle
         enabled={currentSettings?.bot_enabled || false}
         onToggle={() => toggleBot.mutate()}
