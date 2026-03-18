@@ -12,18 +12,12 @@ const alpacaHeaders = {
   'Content-Type': 'application/json',
 };
 
-function isMarketHours() {
-  const now = new Date();
-  const etOptions = { timeZone: 'America/New_York' };
-  const etTime = new Date(now.toLocaleString('en-US', etOptions));
-  const day = etTime.getDay(); // 0=Sun, 6=Sat
-  const hours = etTime.getHours();
-  const minutes = etTime.getMinutes();
-  const totalMinutes = hours * 60 + minutes;
-  const open = 9 * 60 + 30;  // 9:30 AM
-  const close = 16 * 60;     // 4:00 PM
-  if (day === 0 || day === 6) return false;
-  return totalMinutes >= open && totalMinutes < close;
+// FIX 2: Use Alpaca's /v2/clock instead of manual time check — handles holidays automatically
+async function isMarketOpen() {
+  const res = await fetch(`${ALPACA_BASE_URL}/v2/clock`, { headers: alpacaHeaders });
+  if (!res.ok) return false;
+  const data = await res.json();
+  return data.is_open === true;
 }
 
 function calculateMA(prices, period) {
@@ -33,6 +27,7 @@ function calculateMA(prices, period) {
 }
 
 async function fetchBars(symbol, limit) {
+  // FIX 1: Increased limit buffer to slow_ma_period + 10 to handle sparse data at open
   const url = `${ALPACA_DATA_URL}/v2/stocks/${symbol}/bars?timeframe=1Min&limit=${limit}&feed=iex`;
   const res = await fetch(url, { headers: alpacaHeaders });
   if (!res.ok) {
@@ -81,8 +76,9 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    if (!isMarketHours()) {
-      return Response.json({ message: 'Outside market hours, skipping.', ran_at: new Date().toISOString() });
+    // FIX 2: Replaced manual isMarketHours() with Alpaca clock check
+    if (!await isMarketOpen()) {
+      return Response.json({ message: 'Market is not open, skipping.', ran_at: new Date().toISOString() });
     }
 
     // Fetch settings
@@ -96,7 +92,13 @@ Deno.serve(async (req) => {
       return Response.json({ message: 'Bot is disabled.' });
     }
 
-    const { watchlist = [], max_per_trade = 1000, daily_loss_limit = 500, fast_ma_period = 9, slow_ma_period = 21 } = settings;
+    const {
+      watchlist = [],
+      max_per_trade = 1000,
+      daily_loss_limit = 500,
+      fast_ma_period = 9,
+      slow_ma_period = 21,
+    } = settings;
 
     if (watchlist.length === 0) {
       return Response.json({ message: 'Watchlist is empty.' });
@@ -109,14 +111,19 @@ Deno.serve(async (req) => {
     const dailyLoss = todayTrades.reduce((sum, t) => sum + (t.result || 0), 0);
 
     if (dailyLoss <= -daily_loss_limit) {
-      return Response.json({ message: `Daily loss limit of $${daily_loss_limit} hit. Bot stopped for today.`, daily_loss: dailyLoss });
+      return Response.json({
+        message: `Daily loss limit of $${daily_loss_limit} hit. Bot stopped for today.`,
+        daily_loss: dailyLoss,
+      });
     }
 
+    // FIX 3: Pull fresh positions from Alpaca as source of truth before processing
     const openPositions = await getPositions();
     const results = [];
 
     for (const symbol of watchlist) {
-      const neededBars = slow_ma_period + 2;
+      // FIX 1: Buffer increased from slow_ma_period + 2 to slow_ma_period + 10
+      const neededBars = slow_ma_period + 10;
 
       let prices;
       try {
@@ -144,6 +151,8 @@ Deno.serve(async (req) => {
       }
 
       const latestPrice = prices[prices.length - 1];
+
+      // FIX 3: Use Alpaca's live position as source of truth for qty and avg_entry
       const existingPosition = openPositions.find((p) => p.symbol === symbol);
       const hasPosition = existingPosition && parseFloat(existingPosition.qty) > 0;
 
@@ -171,7 +180,6 @@ Deno.serve(async (req) => {
             reason: `Golden cross: fast MA (${currFastMA.toFixed(2)}) crossed above slow MA (${currSlowMA.toFixed(2)})`,
             executed_at: new Date().toISOString(),
           });
-          // Sync position record
           await base44.asServiceRole.entities.Position.create({
             symbol,
             quantity: qty,
@@ -190,6 +198,7 @@ Deno.serve(async (req) => {
           results.push({ symbol, error: e.message });
         }
       } else if (deathCross && hasPosition) {
+        // FIX 3: Use Alpaca's actual qty and avg_entry_price as source of truth
         const qty = parseFloat(existingPosition.qty);
         const avgEntry = parseFloat(existingPosition.avg_entry_price);
         try {
@@ -207,7 +216,7 @@ Deno.serve(async (req) => {
             reason: `Death cross: fast MA (${currFastMA.toFixed(2)}) crossed below slow MA (${currSlowMA.toFixed(2)})`,
             executed_at: new Date().toISOString(),
           });
-          // Remove position record
+          // Remove position record from Base44 db
           const positionRecords = await base44.asServiceRole.entities.Position.filter({ symbol });
           for (const pr of positionRecords) {
             await base44.asServiceRole.entities.Position.delete(pr.id);
@@ -221,13 +230,12 @@ Deno.serve(async (req) => {
           results.push({ symbol, error: e.message });
         }
       } else {
-        // Update position market value if holding
+        // No crossover — update position market value if holding
         if (hasPosition) {
           const positionRecords = await base44.asServiceRole.entities.Position.filter({ symbol });
           for (const pr of positionRecords) {
-            const qty = pr.quantity;
-            const marketValue = qty * latestPrice;
-            const unrealizedPL = (latestPrice - pr.avg_entry_price) * qty;
+            const marketValue = pr.quantity * latestPrice;
+            const unrealizedPL = (latestPrice - pr.avg_entry_price) * pr.quantity;
             const unrealizedPLPct = ((latestPrice - pr.avg_entry_price) / pr.avg_entry_price) * 100;
             await base44.asServiceRole.entities.Position.update(pr.id, {
               current_price: latestPrice,
@@ -237,11 +245,21 @@ Deno.serve(async (req) => {
             });
           }
         }
-        results.push({ symbol, action: 'hold', fast_ma: currFastMA.toFixed(2), slow_ma: currSlowMA.toFixed(2) });
+        results.push({
+          symbol,
+          action: 'hold',
+          fast_ma: currFastMA.toFixed(2),
+          slow_ma: currSlowMA.toFixed(2),
+        });
       }
     }
 
-    return Response.json({ success: true, ran_at: new Date().toISOString(), daily_loss: dailyLoss, results });
+    return Response.json({
+      success: true,
+      ran_at: new Date().toISOString(),
+      daily_loss: dailyLoss,
+      results,
+    });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
