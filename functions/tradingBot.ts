@@ -112,11 +112,10 @@ async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma
   const hasPosition = existingPosition && parseFloat(existingPosition.qty) > 0;
   const goldenCross = prevFastMA <= prevSlowMA && currFastMA > currSlowMA;
   const deathCross = prevFastMA >= prevSlowMA && currFastMA < currSlowMA;
-
-  const scoreNote = totalScore !== null ? ` | Consensus: ${totalScore}/4` : '';
+  const scoreLabel = totalScore !== null ? ` | Consensus ${totalScore}/4` : ' | No consensus score';
 
   if (goldenCross && !hasPosition) {
-    // Gate: only buy if consensus score meets threshold (or no score available yet)
+    // Gate BUY on consensus threshold
     if (totalScore !== null && totalScore < consensus_threshold) {
       return { symbol, action: 'skipped', reason: `Golden cross but consensus score ${totalScore}/4 below threshold ${consensus_threshold}`, strategy: strategyTag };
     }
@@ -128,7 +127,7 @@ async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma
       await base44.asServiceRole.entities.Trade.create({
         symbol, action: 'buy', quantity: qty, price: latestPrice, total_value: totalValue,
         status: 'executed', strategy: strategyTag,
-        reason: `[${strategyTag}] Golden cross: fast MA (${currFastMA.toFixed(2)}) crossed above slow MA (${currSlowMA.toFixed(2)})${scoreNote}`,
+        reason: `[${strategyTag}] Golden cross: fast MA (${currFastMA.toFixed(2)}) crossed above slow MA (${currSlowMA.toFixed(2)})${scoreLabel}`,
         executed_at: new Date().toISOString(),
       });
       await base44.asServiceRole.entities.Position.create({
@@ -144,9 +143,9 @@ async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma
       return { symbol, error: e.message };
     }
   } else if (deathCross && hasPosition) {
-    // Gate: only sell if consensus score is low enough (or no score available)
+    // Gate SELL: only execute if consensus score <= 1
     if (totalScore !== null && totalScore > 1) {
-      return { symbol, action: 'skipped', reason: `Death cross but consensus score ${totalScore}/4 still bullish — holding`, strategy: strategyTag };
+      return { symbol, action: 'skipped', reason: `Death cross but consensus score ${totalScore}/4 still high — holding`, strategy: strategyTag };
     }
     const qty = parseFloat(existingPosition.qty);
     const avgEntry = parseFloat(existingPosition.avg_entry_price);
@@ -157,7 +156,7 @@ async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma
       await base44.asServiceRole.entities.Trade.create({
         symbol, action: 'sell', quantity: qty, price: latestPrice, total_value: totalValue,
         result: tradeResult, status: 'executed', strategy: strategyTag,
-        reason: `[${strategyTag}] Death cross: fast MA (${currFastMA.toFixed(2)}) crossed below slow MA (${currSlowMA.toFixed(2)})${scoreNote}`,
+        reason: `[${strategyTag}] Death cross: fast MA (${currFastMA.toFixed(2)}) crossed below slow MA (${currSlowMA.toFixed(2)})${scoreLabel}`,
         executed_at: new Date().toISOString(),
       });
       const positionRecords = await base44.asServiceRole.entities.Position.filter({ symbol });
@@ -189,18 +188,23 @@ async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma
   }
 }
 
-async function runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, strategyTag) {
+async function runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, strategyTag, totalScore, consensus_threshold) {
   const { score, direction, currFastMA, currSlowMA } = scoreConsensus(prices, fast_ma_period, slow_ma_period);
 
   if (score < 3 || !direction) {
-    return { symbol, action: 'hold', message: `Consensus score ${score}/4 — no trade`, strategy: strategyTag };
+    return { symbol, action: 'hold', message: `Internal MA consensus score ${score}/4 — no trade`, strategy: strategyTag };
   }
 
   const latestPrice = prices[prices.length - 1];
   const existingPosition = openPositions.find((p) => p.symbol === symbol);
   const hasPosition = existingPosition && parseFloat(existingPosition.qty) > 0;
+  const scoreLabel = totalScore !== null ? ` | Global consensus ${totalScore}/4` : '';
 
   if (direction === 'buy' && !hasPosition) {
+    // Gate BUY on global consensus threshold
+    if (totalScore !== null && totalScore < consensus_threshold) {
+      return { symbol, action: 'skipped', reason: `MA consensus buy but global score ${totalScore}/4 below threshold ${consensus_threshold}`, strategy: strategyTag };
+    }
     const qty = Math.floor(max_per_trade / latestPrice);
     if (qty < 1) return { symbol, message: 'Price too high for max_per_trade limit' };
     try {
@@ -209,7 +213,7 @@ async function runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow
       await base44.asServiceRole.entities.Trade.create({
         symbol, action: 'buy', quantity: qty, price: latestPrice, total_value: totalValue,
         status: 'executed', strategy: strategyTag,
-        reason: `[${strategyTag}] Consensus ${score}/4: buy signal`,
+        reason: `[${strategyTag}] Consensus ${score}/4: buy signal${scoreLabel}`,
         executed_at: new Date().toISOString(),
       });
       await base44.asServiceRole.entities.Position.create({
@@ -225,6 +229,10 @@ async function runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow
       return { symbol, error: e.message };
     }
   } else if (direction === 'sell' && hasPosition) {
+    // Gate SELL: only execute if global consensus score <= 1
+    if (totalScore !== null && totalScore > 1) {
+      return { symbol, action: 'skipped', reason: `MA consensus sell but global score ${totalScore}/4 still high — holding`, strategy: strategyTag };
+    }
     const qty = parseFloat(existingPosition.qty);
     const avgEntry = parseFloat(existingPosition.avg_entry_price);
     try {
@@ -234,7 +242,7 @@ async function runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow
       await base44.asServiceRole.entities.Trade.create({
         symbol, action: 'sell', quantity: qty, price: latestPrice, total_value: totalValue,
         result: tradeResult, status: 'executed', strategy: strategyTag,
-        reason: `[${strategyTag}] Consensus ${score}/4: sell signal`,
+        reason: `[${strategyTag}] Consensus ${score}/4: sell signal${scoreLabel}`,
         executed_at: new Date().toISOString(),
       });
       const positionRecords = await base44.asServiceRole.entities.Position.filter({ symbol });
