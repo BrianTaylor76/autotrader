@@ -141,10 +141,10 @@ export default function SignalConsole() {
           { label: "ARK Signals", icon: Building2, ts: lastArk },
           { label: "Congress", icon: Users, ts: lastCongress },
           { label: "Sentiment", icon: MessageSquare, ts: lastSentiment },
-        ].map(({ label, icon: Icon, ts }) => (
+        ].map(({ label, icon: SrcIcon, ts }) => (
           <Card key={label} className="bg-card border-border p-3 flex items-center gap-3">
             <div className="p-2 rounded-lg bg-secondary shrink-0">
-              <Icon className="w-3.5 h-3.5 text-muted-foreground" />
+              <SrcIcon className="w-3.5 h-3.5 text-muted-foreground" />
             </div>
             <div className="min-w-0">
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider truncate">{label}</p>
