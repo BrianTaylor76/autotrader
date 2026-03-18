@@ -46,14 +46,19 @@ Deno.serve(async (req) => {
       records.push({ symbol: symbol.toUpperCase(), weight, date });
     }
 
-    // Clear old signals
+    // Delete old signals in parallel batches, then bulk create new ones
     const existing = await base44.asServiceRole.entities.ARKSignal.list('-created_date', 500);
-    for (const s of existing) {
-      await base44.asServiceRole.entities.ARKSignal.delete(s.id);
+
+    // Delete in parallel (batches of 10)
+    for (let i = 0; i < existing.length; i += 10) {
+      const batch = existing.slice(i, i + 10);
+      await Promise.all(batch.map(s => base44.asServiceRole.entities.ARKSignal.delete(s.id)));
     }
 
-    for (const r of records) {
-      await base44.asServiceRole.entities.ARKSignal.create(r);
+    // Insert in parallel batches of 10
+    for (let i = 0; i < records.length; i += 10) {
+      const batch = records.slice(i, i + 10);
+      await Promise.all(batch.map(r => base44.asServiceRole.entities.ARKSignal.create(r)));
     }
 
     return Response.json({
