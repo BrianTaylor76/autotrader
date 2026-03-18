@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, History, Settings, Key, TrendingUp, CandlestickChart } from "lucide-react";
+import { LayoutDashboard, History, Settings, Key, TrendingUp, LineChart } from "lucide-react";
 
 const navItems = [
   { path: "/Dashboard", label: "Dashboard", icon: LayoutDashboard },
