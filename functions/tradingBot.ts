@@ -96,7 +96,7 @@ function scoreConsensus(prices, fast_ma_period, slow_ma_period) {
   };
 }
 
-async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, strategyTag) {
+async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, strategyTag, totalScore, consensus_threshold) {
   const prevPrices = prices.slice(0, -1);
   const currFastMA = calculateMA(prices, fast_ma_period);
   const currSlowMA = calculateMA(prices, slow_ma_period);
