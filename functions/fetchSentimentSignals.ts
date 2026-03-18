@@ -9,8 +9,7 @@ Deno.serve(async (req) => {
     }
 
     const settingsList = await base44.asServiceRole.entities.StrategySettings.list('-created_date', 1);
-    const settings = settingsList[0];
-    const watchlist = settings?.watchlist || [];
+    const watchlist = settingsList[0]?.watchlist || [];
 
     if (watchlist.length === 0) {
       return Response.json({ message: 'Watchlist is empty', count: 0 });
@@ -20,19 +19,22 @@ Deno.serve(async (req) => {
     const results = [];
 
     for (const symbol of watchlist) {
-      const res = await fetch(`https://api.stocktwits.com/api/2/streams/symbol/${symbol}.json`);
+      const res = await fetch(
+        `https://api.stocktwits.com/api/2/streams/symbol/${symbol}.json`,
+        { headers: { 'User-Agent': 'Mozilla/5.0' } }
+      );
+
       if (!res.ok) {
         results.push({ symbol, error: `HTTP ${res.status}` });
         continue;
       }
 
       const data = await res.json();
-      const messages = data.messages || [];
+      const messages = (data.messages || []).slice(0, 30);
 
       let bullish = 0;
       let bearish = 0;
-
-      for (const msg of messages.slice(0, 30)) {
+      for (const msg of messages) {
         const sentiment = msg.entities?.sentiment?.basic;
         if (sentiment === 'Bullish') bullish++;
         else if (sentiment === 'Bearish') bearish++;
@@ -41,7 +43,7 @@ Deno.serve(async (req) => {
       const total = bullish + bearish;
       const sentiment_score = total > 0 ? bullish / total : 0.5;
 
-      // Delete old signal for this symbol and insert fresh
+      // Delete old for this symbol
       const existing = await base44.asServiceRole.entities.SentimentSignal.filter({ symbol });
       for (const s of existing) {
         await base44.asServiceRole.entities.SentimentSignal.delete(s.id);

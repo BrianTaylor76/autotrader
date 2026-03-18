@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.21';
 
-const ARK_CSV_URL = 'https://ark-funds.com/wp-content/uploads/funds-etf-csv/ARK_INNOVATION_ETF_ARKK_HOLDINGS.csv';
+const ARK_CSV_URL =
+  'https://ark-funds.com/wp-content/uploads/funds-etf-csv/ARK_INNOVATION_ETF_ARKK_HOLDINGS.csv';
 
 Deno.serve(async (req) => {
   try {
@@ -18,9 +19,9 @@ Deno.serve(async (req) => {
     }
 
     const text = await res.text();
-    const lines = text.trim().split('\n');
+    const lines = text.trim().split('\n').filter(l => l.trim());
 
-    // Find header row
+    // Find the header row containing 'ticker'
     let headerIdx = 0;
     for (let i = 0; i < lines.length; i++) {
       if (lines[i].toLowerCase().includes('ticker')) { headerIdx = i; break; }
@@ -36,16 +37,16 @@ Deno.serve(async (req) => {
 
     for (let i = headerIdx + 1; i < lines.length; i++) {
       const cols = lines[i].split(',').map(c => c.replace(/"/g, '').trim());
-      const symbol = cols[tickerCol];
-      if (!symbol || symbol.length < 1 || symbol.length > 6) continue;
+      const symbol = tickerCol >= 0 ? cols[tickerCol] : '';
+      if (!symbol || symbol.length < 1 || symbol.length > 10) continue;
 
       const weight = weightCol >= 0 ? parseFloat(cols[weightCol]) || 0 : 0;
-      const date = dateCol >= 0 ? cols[dateCol] : today;
+      const date = dateCol >= 0 && cols[dateCol] ? cols[dateCol] : today;
 
-      records.push({ symbol, weight, date: date || today });
+      records.push({ symbol: symbol.toUpperCase(), weight, date });
     }
 
-    // Delete old signals and re-insert fresh
+    // Clear old signals
     const existing = await base44.asServiceRole.entities.ARKSignal.list('-created_date', 500);
     for (const s of existing) {
       await base44.asServiceRole.entities.ARKSignal.delete(s.id);
@@ -55,7 +56,11 @@ Deno.serve(async (req) => {
       await base44.asServiceRole.entities.ARKSignal.create(r);
     }
 
-    return Response.json({ success: true, count: records.length, fetched_at: new Date().toISOString() });
+    return Response.json({
+      success: true,
+      count: records.length,
+      fetched_at: new Date().toISOString(),
+    });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }

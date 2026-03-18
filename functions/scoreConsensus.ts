@@ -1,6 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.21';
 
-const ALPACA_BASE_URL = 'https://paper-api.alpaca.markets';
 const ALPACA_DATA_URL = 'https://data.alpaca.markets';
 const ALPACA_KEY = Deno.env.get('ALPACA_API_KEY');
 const ALPACA_SECRET = Deno.env.get('ALPACA_API_SECRET');
@@ -12,8 +11,7 @@ const alpacaHeaders = {
 
 function calculateMA(prices, period) {
   if (prices.length < period) return null;
-  const slice = prices.slice(-period);
-  return slice.reduce((a, b) => a + b, 0) / period;
+  return prices.slice(-period).reduce((a, b) => a + b, 0) / period;
 }
 
 async function fetchBars(symbol, limit) {
@@ -42,19 +40,19 @@ Deno.serve(async (req) => {
       return Response.json({ message: 'Watchlist is empty' });
     }
 
-    // Load all signals once
+    // Load all signals at once
     const [arkSignals, congressSignals, sentimentSignals] = await Promise.all([
       base44.asServiceRole.entities.ARKSignal.list('-created_date', 500),
-      base44.asServiceRole.entities.CongressSignal.list('-created_date', 500),
+      base44.asServiceRole.entities.CongressSignal.list('-created_date', 1000),
       base44.asServiceRole.entities.SentimentSignal.list('-created_date', 200),
     ]);
 
-    const arkSymbols = new Set(arkSignals.map(s => s.symbol.toUpperCase()));
+    const arkSymbolSet = new Set(arkSignals.map(s => s.symbol.toUpperCase()));
 
     const results = [];
 
     for (const symbol of watchlist) {
-      // 1. MA Signal
+      // 1. MA Signal from live price data
       const prices = await fetchBars(symbol, slow_ma + 10);
       let ma_signal = 'neutral';
       if (prices.length >= slow_ma + 1) {
@@ -69,10 +67,10 @@ Deno.serve(async (req) => {
         }
       }
 
-      // 2. ARK Signal — bullish if symbol is in ARKK holdings
-      const ark_signal = arkSymbols.has(symbol.toUpperCase()) ? 'bullish' : 'neutral';
+      // 2. ARK Signal — bullish if in ARKK holdings
+      const ark_signal = arkSymbolSet.has(symbol.toUpperCase()) ? 'bullish' : 'neutral';
 
-      // 3. Congress Signal — bullish if net purchases in last 30 days
+      // 3. Congress Signal — net purchases vs sales in last 30 days
       const symCongress = congressSignals.filter(s => s.symbol.toUpperCase() === symbol.toUpperCase());
       let congress_signal = 'neutral';
       if (symCongress.length > 0) {
@@ -98,7 +96,7 @@ Deno.serve(async (req) => {
       if (total_score >= 3) recommendation = 'buy';
       else if (bearCount >= 3) recommendation = 'sell';
 
-      // Delete old score for this symbol and upsert
+      // Upsert consensus score
       const existing = await base44.asServiceRole.entities.ConsensusScore.filter({ symbol });
       for (const e of existing) {
         await base44.asServiceRole.entities.ConsensusScore.delete(e.id);
