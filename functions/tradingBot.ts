@@ -286,7 +286,17 @@ Deno.serve(async (req) => {
       });
     }
 
+    const consensus_threshold = settings.consensus_threshold ?? 3;
+
     const openPositions = await getPositions();
+
+    // Load latest ConsensusScores for gating
+    const allScores = await base44.asServiceRole.entities.ConsensusScore.list('-scored_at', 200);
+    const consensusMap = {};
+    for (const cs of allScores) {
+      if (!consensusMap[cs.symbol]) consensusMap[cs.symbol] = cs;
+    }
+
     const results = [];
 
     for (const symbol of watchlist) {
@@ -304,17 +314,19 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      const csScore = consensusMap[symbol];
+      const totalScore = csScore?.total_score ?? null;
+
       if (strategy_mode === 'simple') {
-        const r = await runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, 'Simple');
+        const r = await runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, 'Simple', totalScore, consensus_threshold);
         results.push(r);
       } else if (strategy_mode === 'consensus') {
-        const r = await runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, 'Consensus');
+        const r = await runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, 'Consensus', totalScore, consensus_threshold);
         results.push(r);
       } else if (strategy_mode === 'both') {
-        // Use half budget for each so total exposure stays the same
         const halfBudget = max_per_trade / 2;
-        const rSimple = await runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, halfBudget, openPositions, 'Simple');
-        const rConsensus = await runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, halfBudget, openPositions, 'Consensus');
+        const rSimple = await runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, halfBudget, openPositions, 'Simple', totalScore, consensus_threshold);
+        const rConsensus = await runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, halfBudget, openPositions, 'Consensus', totalScore, consensus_threshold);
         results.push(rSimple, rConsensus);
       }
     }
