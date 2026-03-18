@@ -46,6 +46,7 @@ export default function ChartWidget({ symbols = [], defaultSymbol, height = 320,
       setTimeout(() => setPulsing(false), 1000);
     }
     setLoading(false);
+    isFetching.current = false;
   }, [symbol, timeframe]);
 
   // Initial fetch + symbol/timeframe change
