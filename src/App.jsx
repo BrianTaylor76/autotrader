@@ -9,6 +9,7 @@ import Dashboard from './pages/Dashboard';
 import TradeHistory from './pages/TradeHistory';
 import StrategySettings from './pages/StrategySettings';
 import ApiSettings from './pages/ApiSettings';
+import Charts from './pages/Charts';
 import AppLayout from './components/layout/AppLayout';
 import { Navigate } from 'react-router-dom';
 
@@ -44,6 +45,7 @@ const AuthenticatedApp = () => {
         <Route path="/TradeHistory" element={<TradeHistory />} />
         <Route path="/StrategySettings" element={<StrategySettings />} />
         <Route path="/ApiSettings" element={<ApiSettings />} />
+        <Route path="/Charts" element={<Charts />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>

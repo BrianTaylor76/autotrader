@@ -1,12 +1,12 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, History, Settings, Key, TrendingUp } from "lucide-react";
+import { LayoutDashboard, History, Settings, Key, TrendingUp, CandlestickChart } from "lucide-react";
 
 const navItems = [
   { path: "/Dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { path: "/Charts", label: "Charts", icon: CandlestickChart },
   { path: "/TradeHistory", label: "History", icon: History },
   { path: "/StrategySettings", label: "Strategy", icon: Settings },
-  { path: "/ApiSettings", label: "API Keys", icon: Key },
 ];
 
 export default function MobileNav() {
