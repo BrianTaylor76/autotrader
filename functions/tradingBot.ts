@@ -230,6 +230,9 @@ async function runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow
       return { symbol, error: e.message };
     }
   } else if (direction === 'sell' && hasPosition) {
+    if (totalScore !== null && totalScore > 1) {
+      return { symbol, action: 'skipped', reason: `Consensus strategy sell blocked — consensus score ${totalScore}/4 still bullish`, strategy: strategyTag };
+    }
     const qty = parseFloat(existingPosition.qty);
     const avgEntry = parseFloat(existingPosition.avg_entry_price);
     try {
@@ -239,7 +242,7 @@ async function runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow
       await base44.asServiceRole.entities.Trade.create({
         symbol, action: 'sell', quantity: qty, price: latestPrice, total_value: totalValue,
         result: tradeResult, status: 'executed', strategy: strategyTag,
-        reason: `[${strategyTag}] Consensus ${score}/4: sell signal`,
+        reason: `[${strategyTag}] Consensus ${score}/4: sell signal${scoreNote}`,
         executed_at: new Date().toISOString(),
       });
       const positionRecords = await base44.asServiceRole.entities.Position.filter({ symbol });
