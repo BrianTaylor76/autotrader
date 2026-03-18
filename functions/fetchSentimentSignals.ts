@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
       watchlist.map(async (symbol) => {
         const res = await fetch(
           `https://api.stocktwits.com/api/2/streams/symbol/${symbol}.json`,
-          { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000) }
+          { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(5000) }
         ).catch(() => null);
 
         if (!res?.ok) return { symbol, bullish: 0, bearish: 0, sentiment_score: 0.5 };
