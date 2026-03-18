@@ -30,13 +30,13 @@ export default function Dashboard() {
 
   const toggleBot = useMutation({
     mutationFn: async () => {
-      if (currentSettings) {
-        await base44.entities.StrategySettings.update(currentSettings.id, {
-          bot_enabled: !currentSettings.bot_enabled,
-        });
-      }
+      if (!currentSettings?.id) throw new Error("Settings not loaded yet");
+      await base44.entities.StrategySettings.update(currentSettings.id, {
+        bot_enabled: !currentSettings.bot_enabled,
+      });
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["settings"] }),
+    onError: (err) => console.error("Toggle bot failed:", err.message),
   });
 
   const portfolioValue = positions.reduce((sum, p) => sum + (p.market_value || 0), 0);
