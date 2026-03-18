@@ -184,6 +184,13 @@ export default function TradeHistory() {
                             "border-border text-muted-foreground"
                           }`}>{trade.status}</Badge>
                         </TableCell>
+                        <TableCell>
+                          {trade.strategy ? (
+                            <Badge variant="outline" className={`text-[10px] ${trade.strategy === "Consensus" ? "border-chart-3/40 text-chart-3" : "border-chart-4/40 text-chart-4"}`}>
+                              {trade.strategy}
+                            </Badge>
+                          ) : <span className="text-muted-foreground text-xs">—</span>}
+                        </TableCell>
                         <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">{trade.reason || "—"}</TableCell>
                       </TableRow>
                     );
