@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.21';
 
-const ARK_CSV_URL =
-  'https://ark-funds.com/wp-content/uploads/funds-etf-csv/ARK_INNOVATION_ETF_ARKK_HOLDINGS.csv';
+// Use the ARK holdings API endpoint (JSON) which is faster than CSV parsing
+const ARK_API_URL = 'https://arkfunds.io/api/v2/etf/holdings?symbol=ARKK';
 
 Deno.serve(async (req) => {
   try {
@@ -11,54 +11,37 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const res = await fetch(ARK_CSV_URL, {
-      headers: { 'User-Agent': 'Mozilla/5.0' },
+    // Fetch ARK holdings as JSON (much faster than CSV)
+    const res = await fetch(ARK_API_URL, {
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(15000),
     });
+
     if (!res.ok) {
-      return Response.json({ error: `Failed to fetch ARK CSV: ${res.status}` }, { status: 502 });
+      return Response.json({ error: `ARK API responded with ${res.status}` }, { status: 502 });
     }
 
-    const text = await res.text();
-    const lines = text.trim().split('\n').filter(l => l.trim());
-
-    // Find the header row containing 'ticker'
-    let headerIdx = 0;
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].toLowerCase().includes('ticker')) { headerIdx = i; break; }
-    }
-
-    const headers = lines[headerIdx].split(',').map(h => h.replace(/"/g, '').trim().toLowerCase());
-    const tickerCol = headers.findIndex(h => h === 'ticker');
-    const weightCol = headers.findIndex(h => h.includes('weight'));
-    const dateCol = headers.findIndex(h => h === 'date');
+    const json = await res.json();
+    const holdings = json?.holdings || [];
 
     const today = new Date().toISOString().split('T')[0];
-    const records = [];
+    const records = holdings
+      .filter(h => h.ticker && h.ticker.trim().length > 0 && h.ticker !== '-')
+      .map(h => ({
+        symbol: h.ticker.trim().toUpperCase(),
+        weight: parseFloat(h.weight_pct) || 0,
+        date: h.date || today,
+      }));
 
-    for (let i = headerIdx + 1; i < lines.length; i++) {
-      const cols = lines[i].split(',').map(c => c.replace(/"/g, '').trim());
-      const symbol = tickerCol >= 0 ? cols[tickerCol] : '';
-      if (!symbol || symbol.length < 1 || symbol.length > 10) continue;
-
-      const weight = weightCol >= 0 ? parseFloat(cols[weightCol]) || 0 : 0;
-      const date = dateCol >= 0 && cols[dateCol] ? cols[dateCol] : today;
-
-      records.push({ symbol: symbol.toUpperCase(), weight, date });
-    }
-
-    // Delete old signals in parallel batches, then bulk create new ones
+    // Delete old + bulk create new in parallel
     const existing = await base44.asServiceRole.entities.ARKSignal.list('-created_date', 500);
+    await Promise.all(existing.map(s => base44.asServiceRole.entities.ARKSignal.delete(s.id)));
 
-    // Delete in parallel (batches of 10)
-    for (let i = 0; i < existing.length; i += 10) {
-      const batch = existing.slice(i, i + 10);
-      await Promise.all(batch.map(s => base44.asServiceRole.entities.ARKSignal.delete(s.id)));
-    }
-
-    // Insert in parallel batches of 10
-    for (let i = 0; i < records.length; i += 10) {
-      const batch = records.slice(i, i + 10);
-      await Promise.all(batch.map(r => base44.asServiceRole.entities.ARKSignal.create(r)));
+    // Bulk create in batches of 20
+    for (let i = 0; i < records.length; i += 20) {
+      await Promise.all(
+        records.slice(i, i + 20).map(r => base44.asServiceRole.entities.ARKSignal.create(r))
+      );
     }
 
     return Response.json({
