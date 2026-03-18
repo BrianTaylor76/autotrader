@@ -25,7 +25,7 @@ export default function ChartWidget({ symbols = [], defaultSymbol, height = 320,
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [pulsing, setPulsing] = useState(false);
-  const isFetching = React.useRef(false);
+  const isFetching = useRef(false);
 
   const fetchData = useCallback(async () => {
     if (!symbol || isFetching.current) return;
