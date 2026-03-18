@@ -21,6 +21,7 @@ export default function StrategySettings() {
     slow_ma_period: 21,
     bot_enabled: false,
     strategy_mode: "simple",
+    consensus_threshold: 3,
   });
 
   const { data: settings = [], isLoading } = useQuery({
