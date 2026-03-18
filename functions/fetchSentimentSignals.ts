@@ -16,51 +16,48 @@ Deno.serve(async (req) => {
     }
 
     const today = new Date().toISOString().split('T')[0];
-    const results = [];
 
-    for (const symbol of watchlist) {
-      const res = await fetch(
-        `https://api.stocktwits.com/api/2/streams/symbol/${symbol}.json`,
-        { headers: { 'User-Agent': 'Mozilla/5.0' } }
-      );
+    // Fetch all symbols in parallel
+    const fetched = await Promise.all(
+      watchlist.map(async (symbol) => {
+        const res = await fetch(
+          `https://api.stocktwits.com/api/2/streams/symbol/${symbol}.json`,
+          { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000) }
+        ).catch(() => null);
 
-      if (!res.ok) {
-        results.push({ symbol, error: `HTTP ${res.status}` });
-        continue;
-      }
+        if (!res?.ok) return { symbol, bullish: 0, bearish: 0, sentiment_score: 0.5 };
 
-      const data = await res.json();
-      const messages = (data.messages || []).slice(0, 30);
+        const data = await res.json().catch(() => ({}));
+        const messages = (data.messages || []).slice(0, 30);
 
-      let bullish = 0;
-      let bearish = 0;
-      for (const msg of messages) {
-        const sentiment = msg.entities?.sentiment?.basic;
-        if (sentiment === 'Bullish') bullish++;
-        else if (sentiment === 'Bearish') bearish++;
-      }
+        let bullish = 0;
+        let bearish = 0;
+        for (const msg of messages) {
+          const sentiment = msg.entities?.sentiment?.basic;
+          if (sentiment === 'Bullish') bullish++;
+          else if (sentiment === 'Bearish') bearish++;
+        }
 
-      const total = bullish + bearish;
-      const sentiment_score = total > 0 ? bullish / total : 0.5;
+        const total = bullish + bearish;
+        const sentiment_score = total > 0 ? bullish / total : 0.5;
+        return { symbol, bullish, bearish, sentiment_score };
+      })
+    );
 
-      // Delete old for this symbol
-      const existing = await base44.asServiceRole.entities.SentimentSignal.filter({ symbol });
-      for (const s of existing) {
-        await base44.asServiceRole.entities.SentimentSignal.delete(s.id);
-      }
+    // Load existing records + upsert all in parallel
+    const existing = await base44.asServiceRole.entities.SentimentSignal.list('-created_date', 200);
+    const existingBySymbol = Object.fromEntries(existing.map(e => [e.symbol.toUpperCase(), e]));
 
-      await base44.asServiceRole.entities.SentimentSignal.create({
-        symbol,
-        bullish_count: bullish,
-        bearish_count: bearish,
-        sentiment_score,
-        date: today,
-      });
+    await Promise.all(
+      fetched.map(({ symbol, bullish, bearish, sentiment_score }) => {
+        const payload = { symbol, bullish_count: bullish, bearish_count: bearish, sentiment_score, date: today };
+        const prev = existingBySymbol[symbol.toUpperCase()];
+        if (prev) return base44.asServiceRole.entities.SentimentSignal.update(prev.id, payload);
+        return base44.asServiceRole.entities.SentimentSignal.create(payload);
+      })
+    );
 
-      results.push({ symbol, bullish, bearish, sentiment_score });
-    }
-
-    return Response.json({ success: true, results, fetched_at: new Date().toISOString() });
+    return Response.json({ success: true, results: fetched, fetched_at: new Date().toISOString() });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }

@@ -14,16 +14,20 @@ function calculateMA(prices, period) {
   return prices.slice(-period).reduce((a, b) => a + b, 0) / period;
 }
 
-async function fetchBars(symbol, limit) {
-  const url = `${ALPACA_DATA_URL}/v2/stocks/${symbol}/bars?timeframe=1Day&limit=${limit}&feed=sip`;
-  const res = await fetch(url, { headers: alpacaHeaders, signal: AbortSignal.timeout(5000) }).catch(() => null);
+// Use daily bars (always available, not market-hours dependent)
+async function fetchDailyBars(symbol, limit) {
+  const url = `${ALPACA_DATA_URL}/v2/stocks/${symbol}/bars?timeframe=1Day&limit=${limit}&adjustment=raw&feed=iex`;
+  const res = await fetch(url, {
+    headers: alpacaHeaders,
+    signal: AbortSignal.timeout(6000),
+  }).catch(() => null);
   if (!res?.ok) return [];
   const data = await res.json().catch(() => ({}));
   return (data.bars || []).map((b) => b.c);
 }
 
 function scoreSymbol(symbol, prices, fast_ma, slow_ma, arkSymbolSet, congressSignals, sentimentSignals) {
-  // MA Signal
+  // MA Signal using daily bars
   let ma_signal = 'neutral';
   if (prices.length >= slow_ma) {
     const currFast = calculateMA(prices, fast_ma);
@@ -84,31 +88,28 @@ Deno.serve(async (req) => {
       return Response.json({ message: 'Watchlist is empty' });
     }
 
-    // Load all signals + price data in parallel
-    const [arkSignals, congressSignals, sentimentSignals, ...priceArrays] = await Promise.all([
+    // Load all signals + price data fully in parallel
+    const [arkSignals, congressSignals, sentimentSignals, existing, ...priceArrays] = await Promise.all([
       base44.asServiceRole.entities.ARKSignal.list('-created_date', 500),
       base44.asServiceRole.entities.CongressSignal.list('-created_date', 1000),
       base44.asServiceRole.entities.SentimentSignal.list('-created_date', 200),
-      ...watchlist.map(sym => fetchBars(sym, slow_ma + 5)),
+      base44.asServiceRole.entities.ConsensusScore.list('-scored_at', 200),
+      ...watchlist.map(sym => fetchDailyBars(sym, slow_ma + 5)),
     ]);
 
     const arkSymbolSet = new Set(arkSignals.map(s => s.symbol.toUpperCase()));
 
-    // Score all symbols
+    // Score all symbols (pure CPU, instant)
     const results = watchlist.map((symbol, idx) =>
       scoreSymbol(symbol, priceArrays[idx], fast_ma, slow_ma, arkSymbolSet, congressSignals, sentimentSignals)
     );
 
-    // Upsert: update existing records or create new ones — all in parallel
-    const existing = await base44.asServiceRole.entities.ConsensusScore.list('-scored_at', 200);
+    // Upsert all scores in parallel
     const existingBySymbol = Object.fromEntries(existing.map(e => [e.symbol.toUpperCase(), e]));
-
     await Promise.all(results.map(r => {
-      const prev = existingBySymbol[r.symbol.toUpperCase()];
       const payload = { ...r, scored_at: new Date().toISOString() };
-      if (prev) {
-        return base44.asServiceRole.entities.ConsensusScore.update(prev.id, payload);
-      }
+      const prev = existingBySymbol[r.symbol.toUpperCase()];
+      if (prev) return base44.asServiceRole.entities.ConsensusScore.update(prev.id, payload);
       return base44.asServiceRole.entities.ConsensusScore.create(payload);
     }));
 
