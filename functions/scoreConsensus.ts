@@ -15,11 +15,55 @@ function calculateMA(prices, period) {
 }
 
 async function fetchBars(symbol, limit) {
-  const url = `${ALPACA_DATA_URL}/v2/stocks/${symbol}/bars?timeframe=1Min&limit=${limit}&feed=iex`;
-  const res = await fetch(url, { headers: alpacaHeaders });
-  if (!res.ok) return [];
-  const data = await res.json();
+  const url = `${ALPACA_DATA_URL}/v2/stocks/${symbol}/bars?timeframe=1Day&limit=${limit}&feed=iex`;
+  const res = await fetch(url, { headers: alpacaHeaders, signal: AbortSignal.timeout(8000) }).catch(() => null);
+  if (!res?.ok) return [];
+  const data = await res.json().catch(() => ({}));
   return (data.bars || []).map((b) => b.c);
+}
+
+function scoreSymbol(symbol, prices, fast_ma, slow_ma, arkSymbolSet, congressSignals, sentimentSignals) {
+  // MA Signal
+  let ma_signal = 'neutral';
+  if (prices.length >= slow_ma) {
+    const currFast = calculateMA(prices, fast_ma);
+    const currSlow = calculateMA(prices, slow_ma);
+    if (currFast && currSlow) {
+      if (currFast > currSlow) ma_signal = 'bullish';
+      else if (currFast < currSlow) ma_signal = 'bearish';
+    }
+  }
+
+  // ARK Signal
+  const ark_signal = arkSymbolSet.has(symbol.toUpperCase()) ? 'bullish' : 'neutral';
+
+  // Congress Signal
+  const symCongress = congressSignals.filter(s => s.symbol.toUpperCase() === symbol.toUpperCase());
+  let congress_signal = 'neutral';
+  if (symCongress.length > 0) {
+    const purchases = symCongress.filter(s => s.transaction?.toLowerCase().includes('purchase')).length;
+    const sales = symCongress.filter(s => s.transaction?.toLowerCase().includes('sale')).length;
+    if (purchases > sales) congress_signal = 'bullish';
+    else if (sales > purchases) congress_signal = 'bearish';
+  }
+
+  // Sentiment Signal
+  const symSentiment = sentimentSignals.find(s => s.symbol.toUpperCase() === symbol.toUpperCase());
+  let sentiment_signal = 'neutral';
+  if (symSentiment) {
+    if (symSentiment.sentiment_score >= 0.6) sentiment_signal = 'bullish';
+    else if (symSentiment.sentiment_score <= 0.4) sentiment_signal = 'bearish';
+  }
+
+  const signals = [ma_signal, ark_signal, congress_signal, sentiment_signal];
+  const total_score = signals.filter(s => s === 'bullish').length;
+  const bearCount = signals.filter(s => s === 'bearish').length;
+
+  let recommendation = 'hold';
+  if (total_score >= 3) recommendation = 'buy';
+  else if (bearCount >= 3) recommendation = 'sell';
+
+  return { symbol, ma_signal, ark_signal, congress_signal, sentiment_signal, total_score, recommendation };
 }
 
 Deno.serve(async (req) => {
@@ -40,81 +84,30 @@ Deno.serve(async (req) => {
       return Response.json({ message: 'Watchlist is empty' });
     }
 
-    // Load all signals at once
-    const [arkSignals, congressSignals, sentimentSignals] = await Promise.all([
+    // Load all signals + price data in parallel
+    const [arkSignals, congressSignals, sentimentSignals, ...priceArrays] = await Promise.all([
       base44.asServiceRole.entities.ARKSignal.list('-created_date', 500),
       base44.asServiceRole.entities.CongressSignal.list('-created_date', 1000),
       base44.asServiceRole.entities.SentimentSignal.list('-created_date', 200),
+      ...watchlist.map(sym => fetchBars(sym, slow_ma + 5)),
     ]);
 
     const arkSymbolSet = new Set(arkSignals.map(s => s.symbol.toUpperCase()));
 
-    const results = [];
+    // Score all symbols
+    const results = watchlist.map((symbol, idx) =>
+      scoreSymbol(symbol, priceArrays[idx], fast_ma, slow_ma, arkSymbolSet, congressSignals, sentimentSignals)
+    );
 
-    for (const symbol of watchlist) {
-      // 1. MA Signal from live price data
-      const prices = await fetchBars(symbol, slow_ma + 10);
-      let ma_signal = 'neutral';
-      if (prices.length >= slow_ma + 1) {
-        const prevPrices = prices.slice(0, -1);
-        const currFast = calculateMA(prices, fast_ma);
-        const currSlow = calculateMA(prices, slow_ma);
-        const prevFast = calculateMA(prevPrices, fast_ma);
-        const prevSlow = calculateMA(prevPrices, slow_ma);
-        if (currFast && currSlow && prevFast && prevSlow) {
-          if (currFast > currSlow) ma_signal = 'bullish';
-          else if (currFast < currSlow) ma_signal = 'bearish';
-        }
-      }
-
-      // 2. ARK Signal — bullish if in ARKK holdings
-      const ark_signal = arkSymbolSet.has(symbol.toUpperCase()) ? 'bullish' : 'neutral';
-
-      // 3. Congress Signal — net purchases vs sales in last 30 days
-      const symCongress = congressSignals.filter(s => s.symbol.toUpperCase() === symbol.toUpperCase());
-      let congress_signal = 'neutral';
-      if (symCongress.length > 0) {
-        const purchases = symCongress.filter(s => s.transaction?.toLowerCase().includes('purchase')).length;
-        const sales = symCongress.filter(s => s.transaction?.toLowerCase().includes('sale')).length;
-        if (purchases > sales) congress_signal = 'bullish';
-        else if (sales > purchases) congress_signal = 'bearish';
-      }
-
-      // 4. Sentiment Signal
-      const symSentiment = sentimentSignals.find(s => s.symbol.toUpperCase() === symbol.toUpperCase());
-      let sentiment_signal = 'neutral';
-      if (symSentiment) {
-        if (symSentiment.sentiment_score >= 0.6) sentiment_signal = 'bullish';
-        else if (symSentiment.sentiment_score <= 0.4) sentiment_signal = 'bearish';
-      }
-
-      const signals = [ma_signal, ark_signal, congress_signal, sentiment_signal];
-      const total_score = signals.filter(s => s === 'bullish').length;
-      const bearCount = signals.filter(s => s === 'bearish').length;
-
-      let recommendation = 'hold';
-      if (total_score >= 3) recommendation = 'buy';
-      else if (bearCount >= 3) recommendation = 'sell';
-
-      // Upsert consensus score
-      const existing = await base44.asServiceRole.entities.ConsensusScore.filter({ symbol });
-      for (const e of existing) {
-        await base44.asServiceRole.entities.ConsensusScore.delete(e.id);
-      }
-
-      await base44.asServiceRole.entities.ConsensusScore.create({
-        symbol,
-        ma_signal,
-        ark_signal,
-        congress_signal,
-        sentiment_signal,
-        total_score,
-        recommendation,
+    // Delete old consensus scores + create new ones — all in parallel
+    const existing = await base44.asServiceRole.entities.ConsensusScore.list('-scored_at', 200);
+    await Promise.all(existing.map(e => base44.asServiceRole.entities.ConsensusScore.delete(e.id)));
+    await Promise.all(results.map(r =>
+      base44.asServiceRole.entities.ConsensusScore.create({
+        ...r,
         scored_at: new Date().toISOString(),
-      });
-
-      results.push({ symbol, ma_signal, ark_signal, congress_signal, sentiment_signal, total_score, recommendation });
-    }
+      })
+    ));
 
     return Response.json({ success: true, results, scored_at: new Date().toISOString() });
   } catch (error) {
