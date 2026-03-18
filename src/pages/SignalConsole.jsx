@@ -110,22 +110,31 @@ export default function SignalConsole() {
 
   async function handleRefreshAll() {
     setRefreshing(true);
-    setRefreshStep("Fetching all signals…");
+    const steps = [
+      { fn: "fetchARKSignals", label: "Fetching ARK signals…" },
+      { fn: "fetchCongressSignals", label: "Fetching Congress signals…" },
+      { fn: "fetchSentimentSignals", label: "Fetching sentiment signals…" },
+      { fn: "scoreConsensus", label: "Scoring consensus…" },
+    ];
 
-    // Fetch all 3 signal sources in parallel, then score
-    await Promise.all([
-      base44.functions.invoke("fetchARKSignals", {}),
-      base44.functions.invoke("fetchCongressSignals", {}),
-      base44.functions.invoke("fetchSentimentSignals", {}),
-    ]);
-
-    setRefreshStep("Scoring consensus…");
-    await base44.functions.invoke("scoreConsensus", {});
+    let anyFailed = false;
+    for (const step of steps) {
+      setRefreshStep(step.label);
+      try {
+        await base44.functions.invoke(step.fn, {});
+      } catch {
+        anyFailed = true;
+      }
+    }
 
     setRefreshStep("");
     setRefreshing(false);
     queryClient.invalidateQueries({ queryKey: ["consensus_scores"] });
-    toast({ title: "Signals refreshed", description: "All 4 signal sources updated and scored." });
+    if (anyFailed) {
+      toast({ title: "Partially refreshed", description: "Some signal sources failed — scores updated with available data.", variant: "destructive" });
+    } else {
+      toast({ title: "Signals refreshed", description: "All 4 signal sources updated and scored." });
+    }
   }
 
   return (
