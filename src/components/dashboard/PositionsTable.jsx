@@ -4,6 +4,45 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown } from "lucide-react";
 
+function PositionCard({ pos }) {
+  const isPositive = (pos.unrealized_pl || 0) >= 0;
+  return (
+    <div className="px-4 py-3 border-b border-border last:border-0">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold font-mono ${
+            isPositive ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"
+          }`}>
+            {pos.symbol?.slice(0, 2)}
+          </div>
+          <span className="font-mono font-semibold text-foreground">{pos.symbol}</span>
+          <span className="text-xs text-muted-foreground">{pos.quantity} shares</span>
+        </div>
+        <div className="flex items-center gap-1">
+          {isPositive ? <TrendingUp className="w-3 h-3 text-primary" /> : <TrendingDown className="w-3 h-3 text-destructive" />}
+          <span className={`font-mono font-semibold text-sm ${isPositive ? "text-primary" : "text-destructive"}`}>
+            {isPositive ? "+" : ""}${(pos.unrealized_pl || 0).toFixed(2)}
+          </span>
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-xs">
+        <div>
+          <p className="text-muted-foreground">Avg Entry</p>
+          <p className="font-mono text-foreground mt-0.5">${pos.avg_entry_price?.toFixed(2)}</p>
+        </div>
+        <div>
+          <p className="text-muted-foreground">Current</p>
+          <p className="font-mono text-foreground mt-0.5">${pos.current_price?.toFixed(2) || "—"}</p>
+        </div>
+        <div>
+          <p className="text-muted-foreground">Mkt Value</p>
+          <p className="font-mono text-foreground mt-0.5">${pos.market_value?.toFixed(2) || "—"}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PositionsTable({ positions, loading }) {
   if (loading) {
     return (
@@ -11,7 +50,7 @@ export default function PositionsTable({ positions, loading }) {
         <h3 className="text-sm font-medium uppercase tracking-wider text-muted-foreground mb-4">Active Positions</h3>
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-12 bg-secondary/50 rounded-lg animate-pulse" />
+            <div key={i} className="h-16 bg-secondary/50 rounded-lg animate-pulse" />
           ))}
         </div>
       </Card>
@@ -20,7 +59,7 @@ export default function PositionsTable({ positions, loading }) {
 
   return (
     <Card className="bg-card border-border overflow-hidden">
-      <div className="p-5 border-b border-border">
+      <div className="p-4 md:p-5 border-b border-border">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Active Positions</h3>
           <Badge variant="outline" className="text-xs font-mono">{positions.length} open</Badge>
@@ -31,60 +70,63 @@ export default function PositionsTable({ positions, loading }) {
           <p className="text-muted-foreground text-sm">No active positions</p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow className="border-border hover:bg-transparent">
-                <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Symbol</TableHead>
-                <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground text-right">Qty</TableHead>
-                <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground text-right">Avg Entry</TableHead>
-                <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground text-right">Current</TableHead>
-                <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground text-right">Market Value</TableHead>
-                <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground text-right">P&L</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {positions.map((pos) => {
-                const isPositive = (pos.unrealized_pl || 0) >= 0;
-                return (
-                  <TableRow key={pos.id} className="border-border">
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold font-mono ${
-                          isPositive ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"
-                        }`}>
-                          {pos.symbol?.slice(0, 2)}
+        <>
+          {/* Mobile: card list */}
+          <div className="md:hidden">
+            {positions.map((pos) => <PositionCard key={pos.id} pos={pos} />)}
+          </div>
+          {/* Desktop: table */}
+          <div className="hidden md:block overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-border hover:bg-transparent">
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Symbol</TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground text-right">Qty</TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground text-right">Avg Entry</TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground text-right">Current</TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground text-right">Market Value</TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground text-right">P&L</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {positions.map((pos) => {
+                  const isPositive = (pos.unrealized_pl || 0) >= 0;
+                  return (
+                    <TableRow key={pos.id} className="border-border">
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold font-mono ${
+                            isPositive ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"
+                          }`}>
+                            {pos.symbol?.slice(0, 2)}
+                          </div>
+                          <span className="font-mono font-semibold text-foreground">{pos.symbol}</span>
                         </div>
-                        <span className="font-mono font-semibold text-foreground">{pos.symbol}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-foreground">{pos.quantity}</TableCell>
-                    <TableCell className="text-right font-mono text-muted-foreground">${pos.avg_entry_price?.toFixed(2)}</TableCell>
-                    <TableCell className="text-right font-mono text-foreground">${pos.current_price?.toFixed(2) || "—"}</TableCell>
-                    <TableCell className="text-right font-mono text-foreground">${pos.market_value?.toFixed(2) || "—"}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        {isPositive ? (
-                          <TrendingUp className="w-3 h-3 text-primary" />
-                        ) : (
-                          <TrendingDown className="w-3 h-3 text-destructive" />
-                        )}
-                        <span className={`font-mono font-medium ${isPositive ? "text-primary" : "text-destructive"}`}>
-                          {isPositive ? "+" : ""}${(pos.unrealized_pl || 0).toFixed(2)}
-                        </span>
-                        {pos.unrealized_pl_pct != null && (
-                          <span className={`text-xs font-mono ml-1 ${isPositive ? "text-primary/70" : "text-destructive/70"}`}>
-                            ({isPositive ? "+" : ""}{pos.unrealized_pl_pct?.toFixed(1)}%)
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-foreground">{pos.quantity}</TableCell>
+                      <TableCell className="text-right font-mono text-muted-foreground">${pos.avg_entry_price?.toFixed(2)}</TableCell>
+                      <TableCell className="text-right font-mono text-foreground">${pos.current_price?.toFixed(2) || "—"}</TableCell>
+                      <TableCell className="text-right font-mono text-foreground">${pos.market_value?.toFixed(2) || "—"}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          {isPositive ? <TrendingUp className="w-3 h-3 text-primary" /> : <TrendingDown className="w-3 h-3 text-destructive" />}
+                          <span className={`font-mono font-medium ${isPositive ? "text-primary" : "text-destructive"}`}>
+                            {isPositive ? "+" : ""}${(pos.unrealized_pl || 0).toFixed(2)}
                           </span>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
+                          {pos.unrealized_pl_pct != null && (
+                            <span className={`text-xs font-mono ml-1 ${isPositive ? "text-primary/70" : "text-destructive/70"}`}>
+                              ({isPositive ? "+" : ""}{pos.unrealized_pl_pct?.toFixed(1)}%)
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </>
       )}
     </Card>
   );
