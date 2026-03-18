@@ -20,6 +20,7 @@ export default function StrategySettings() {
     fast_ma_period: 9,
     slow_ma_period: 21,
     bot_enabled: false,
+    strategy_mode: "simple",
   });
 
   const { data: settings = [], isLoading } = useQuery({
@@ -38,6 +39,7 @@ export default function StrategySettings() {
         fast_ma_period: current.fast_ma_period || 9,
         slow_ma_period: current.slow_ma_period || 21,
         bot_enabled: current.bot_enabled || false,
+        strategy_mode: current.strategy_mode || "simple",
       });
     }
   }, [current]);

@@ -65,6 +65,7 @@ export default function TradeHistory() {
   const filtered = trades.filter((t) => {
     if (actionFilter !== "all" && t.action !== actionFilter) return false;
     if (symbolFilter && !t.symbol?.toLowerCase().includes(symbolFilter.toLowerCase())) return false;
+    if (strategyFilter !== "all" && (t.strategy || "Simple").toLowerCase() !== strategyFilter.toLowerCase()) return false;
     return true;
   });
 
