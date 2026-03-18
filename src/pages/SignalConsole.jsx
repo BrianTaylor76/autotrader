@@ -117,14 +117,17 @@ export default function SignalConsole() {
       { fn: "scoreConsensus", label: "Scoring consensus…" },
     ];
 
-    let anyFailed = false;
-    for (const step of steps) {
-      setRefreshStep(step.label);
-      try {
-        await base44.functions.invoke(step.fn, {});
-      } catch {
-        anyFailed = true;
-      }
+    // Run ARK, Congress, Sentiment in parallel — then score after
+    setRefreshStep("Fetching signals…");
+    const dataSteps = steps.slice(0, 3);
+    const results = await Promise.allSettled(dataSteps.map(s => base44.functions.invoke(s.fn, {})));
+    const anyFailed = results.some(r => r.status === "rejected");
+
+    setRefreshStep("Scoring consensus…");
+    try {
+      await base44.functions.invoke("scoreConsensus", {});
+    } catch {
+      // score step failed
     }
 
     setRefreshStep("");
