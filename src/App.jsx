@@ -10,7 +10,6 @@ import TradeHistory from './pages/TradeHistory';
 import StrategySettings from './pages/StrategySettings';
 import ApiSettings from './pages/ApiSettings';
 import Charts from './pages/Charts';
-import SignalConsole from './pages/SignalConsole';
 import AppLayout from './components/layout/AppLayout';
 import { Navigate } from 'react-router-dom';
 
@@ -47,7 +46,6 @@ const AuthenticatedApp = () => {
         <Route path="/StrategySettings" element={<StrategySettings />} />
         <Route path="/ApiSettings" element={<ApiSettings />} />
         <Route path="/Charts" element={<Charts />} />
-        <Route path="/SignalConsole" element={<SignalConsole />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
