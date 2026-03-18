@@ -4,7 +4,7 @@ import { LayoutDashboard, History, Settings, Key, Activity, TrendingUp, LineChar
 
 const navItems = [
   { path: "/Dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { path: "/Charts", label: "Charts", icon: CandlestickChart },
+  { path: "/Charts", label: "Charts", icon: LineChart },
   { path: "/TradeHistory", label: "Trade History", icon: History },
   { path: "/StrategySettings", label: "Strategy", icon: Settings },
   { path: "/ApiSettings", label: "API Keys", icon: Key },
