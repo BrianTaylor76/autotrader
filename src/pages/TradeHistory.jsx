@@ -20,7 +20,7 @@ function TradeCard({ trade }) {
             {isBuy ? <ArrowUpRight className="w-4 h-4 text-primary" /> : <ArrowDownRight className="w-4 h-4 text-destructive" />}
           </div>
           <div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <span className="font-mono font-bold text-foreground">{trade.symbol}</span>
               <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${isBuy ? "border-primary/30 text-primary" : "border-destructive/30 text-destructive"}`}>
                 {trade.action?.toUpperCase()}
@@ -30,6 +30,11 @@ function TradeCard({ trade }) {
                 trade.status === "failed" ? "border-destructive/30 text-destructive" :
                 "border-border text-muted-foreground"
               }`}>{trade.status}</Badge>
+              {trade.strategy && (
+                <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${trade.strategy === "Consensus" ? "border-chart-3/40 text-chart-3" : "border-chart-4/40 text-chart-4"}`}>
+                  {trade.strategy}
+                </Badge>
+              )}
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
               {trade.quantity} shares @ ${trade.price?.toFixed(2)} · {trade.executed_at ? format(new Date(trade.executed_at), "MMM d, h:mm a") : "—"}
@@ -138,6 +143,7 @@ export default function TradeHistory() {
                     <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground text-right">Total</TableHead>
                     <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground text-right">Result</TableHead>
                     <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Status</TableHead>
+                    <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Strategy</TableHead>
                     <TableHead className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Reason</TableHead>
                   </TableRow>
                 </TableHeader>
