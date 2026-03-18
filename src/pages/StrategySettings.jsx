@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
-import { Save, Plus, X, ListFilter, DollarSign, ShieldAlert, Activity } from "lucide-react";
+import { Save, Plus, X, ListFilter, DollarSign, Activity, Layers } from "lucide-react";
 
 export default function StrategySettings() {
   const { toast } = useToast();

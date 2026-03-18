@@ -55,6 +55,7 @@ function TradeCard({ trade }) {
 export default function TradeHistory() {
   const [actionFilter, setActionFilter] = useState("all");
   const [symbolFilter, setSymbolFilter] = useState("");
+  const [strategyFilter, setStrategyFilter] = useState("all");
 
   const { data: trades = [], isLoading } = useQuery({
     queryKey: ["all-trades"],

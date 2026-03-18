@@ -12,7 +12,6 @@ const alpacaHeaders = {
   'Content-Type': 'application/json',
 };
 
-// FIX 2: Use Alpaca's /v2/clock instead of manual time check — handles holidays automatically
 async function isMarketOpen() {
   const res = await fetch(`${ALPACA_BASE_URL}/v2/clock`, { headers: alpacaHeaders });
   if (!res.ok) return false;
@@ -27,7 +26,6 @@ function calculateMA(prices, period) {
 }
 
 async function fetchBars(symbol, limit) {
-  // FIX 1: Increased limit buffer to slow_ma_period + 10 to handle sparse data at open
   const url = `${ALPACA_DATA_URL}/v2/stocks/${symbol}/bars?timeframe=1Min&limit=${limit}&feed=iex`;
   const res = await fetch(url, { headers: alpacaHeaders });
   if (!res.ok) {
@@ -35,7 +33,7 @@ async function fetchBars(symbol, limit) {
     throw new Error(`Failed to fetch bars for ${symbol}: ${err}`);
   }
   const data = await res.json();
-  return (data.bars || []).map((b) => b.c); // close prices
+  return (data.bars || []).map((b) => b.c);
 }
 
 async function getPositions() {
@@ -59,13 +57,191 @@ async function placeOrder(symbol, side, qty) {
   return await res.json();
 }
 
-async function getLatestPrice(symbol) {
-  const url = `${ALPACA_DATA_URL}/v2/stocks/${symbol}/bars?timeframe=1Min&limit=1&feed=iex`;
-  const res = await fetch(url, { headers: alpacaHeaders });
-  if (!res.ok) return null;
-  const data = await res.json();
-  const bars = data.bars || [];
-  return bars.length > 0 ? bars[bars.length - 1].c : null;
+// Consensus scoring: returns a score 0-4 and signals breakdown
+function scoreConsensus(prices, fast_ma_period, slow_ma_period) {
+  if (prices.length < slow_ma_period + 1) return { score: 0, direction: null };
+
+  const prevPrices = prices.slice(0, -1);
+  const currFastMA = calculateMA(prices, fast_ma_period);
+  const currSlowMA = calculateMA(prices, slow_ma_period);
+  const prevFastMA = calculateMA(prevPrices, fast_ma_period);
+  const prevSlowMA = calculateMA(prevPrices, slow_ma_period);
+
+  if (!currFastMA || !currSlowMA || !prevFastMA || !prevSlowMA) return { score: 0, direction: null };
+
+  const latestPrice = prices[prices.length - 1];
+  const prevPrice = prices[prices.length - 2];
+
+  // Signal 1: MA Crossover
+  const maCross = prevFastMA <= prevSlowMA && currFastMA > currSlowMA ? 'buy'
+    : prevFastMA >= prevSlowMA && currFastMA < currSlowMA ? 'sell' : null;
+
+  // Signal 2: Price above/below slow MA
+  const priceTrend = latestPrice > currSlowMA ? 'buy' : latestPrice < currSlowMA ? 'sell' : null;
+
+  // Signal 3: Fast MA slope (momentum)
+  const fastSlope = currFastMA > prevFastMA ? 'buy' : currFastMA < prevFastMA ? 'sell' : null;
+
+  // Signal 4: Price momentum (last bar direction)
+  const priceMomentum = latestPrice > prevPrice ? 'buy' : latestPrice < prevPrice ? 'sell' : null;
+
+  const signals = [maCross, priceTrend, fastSlope, priceMomentum];
+  const buyCount = signals.filter(s => s === 'buy').length;
+  const sellCount = signals.filter(s => s === 'sell').length;
+
+  return {
+    score: Math.max(buyCount, sellCount),
+    direction: buyCount > sellCount ? 'buy' : sellCount > buyCount ? 'sell' : null,
+    currFastMA, currSlowMA, signals,
+  };
+}
+
+async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, strategyTag) {
+  const prevPrices = prices.slice(0, -1);
+  const currFastMA = calculateMA(prices, fast_ma_period);
+  const currSlowMA = calculateMA(prices, slow_ma_period);
+  const prevFastMA = calculateMA(prevPrices, fast_ma_period);
+  const prevSlowMA = calculateMA(prevPrices, slow_ma_period);
+
+  if (!currFastMA || !currSlowMA || !prevFastMA || !prevSlowMA) {
+    return { symbol, message: 'Could not calculate MAs' };
+  }
+
+  const latestPrice = prices[prices.length - 1];
+  const existingPosition = openPositions.find((p) => p.symbol === symbol);
+  const hasPosition = existingPosition && parseFloat(existingPosition.qty) > 0;
+  const goldenCross = prevFastMA <= prevSlowMA && currFastMA > currSlowMA;
+  const deathCross = prevFastMA >= prevSlowMA && currFastMA < currSlowMA;
+
+  if (goldenCross && !hasPosition) {
+    const qty = Math.floor(max_per_trade / latestPrice);
+    if (qty < 1) return { symbol, message: 'Price too high for max_per_trade limit' };
+    try {
+      await placeOrder(symbol, 'buy', qty);
+      const totalValue = qty * latestPrice;
+      await base44.asServiceRole.entities.Trade.create({
+        symbol, action: 'buy', quantity: qty, price: latestPrice, total_value: totalValue,
+        status: 'executed', strategy: strategyTag,
+        reason: `[${strategyTag}] Golden cross: fast MA (${currFastMA.toFixed(2)}) crossed above slow MA (${currSlowMA.toFixed(2)})`,
+        executed_at: new Date().toISOString(),
+      });
+      await base44.asServiceRole.entities.Position.create({
+        symbol, quantity: qty, avg_entry_price: latestPrice, current_price: latestPrice,
+        market_value: totalValue, unrealized_pl: 0, unrealized_pl_pct: 0,
+      });
+      return { symbol, action: 'buy', qty, price: latestPrice, strategy: strategyTag };
+    } catch (e) {
+      await base44.asServiceRole.entities.Trade.create({
+        symbol, action: 'buy', quantity: 0, price: latestPrice, total_value: 0,
+        status: 'failed', strategy: strategyTag, reason: e.message, executed_at: new Date().toISOString(),
+      });
+      return { symbol, error: e.message };
+    }
+  } else if (deathCross && hasPosition) {
+    const qty = parseFloat(existingPosition.qty);
+    const avgEntry = parseFloat(existingPosition.avg_entry_price);
+    try {
+      await placeOrder(symbol, 'sell', qty);
+      const totalValue = qty * latestPrice;
+      const tradeResult = (latestPrice - avgEntry) * qty;
+      await base44.asServiceRole.entities.Trade.create({
+        symbol, action: 'sell', quantity: qty, price: latestPrice, total_value: totalValue,
+        result: tradeResult, status: 'executed', strategy: strategyTag,
+        reason: `[${strategyTag}] Death cross: fast MA (${currFastMA.toFixed(2)}) crossed below slow MA (${currSlowMA.toFixed(2)})`,
+        executed_at: new Date().toISOString(),
+      });
+      const positionRecords = await base44.asServiceRole.entities.Position.filter({ symbol });
+      for (const pr of positionRecords) {
+        await base44.asServiceRole.entities.Position.delete(pr.id);
+      }
+      return { symbol, action: 'sell', qty, price: latestPrice, result: tradeResult, strategy: strategyTag };
+    } catch (e) {
+      await base44.asServiceRole.entities.Trade.create({
+        symbol, action: 'sell', quantity: qty, price: latestPrice, total_value: qty * latestPrice,
+        status: 'failed', strategy: strategyTag, reason: e.message, executed_at: new Date().toISOString(),
+      });
+      return { symbol, error: e.message };
+    }
+  } else {
+    if (hasPosition) {
+      const positionRecords = await base44.asServiceRole.entities.Position.filter({ symbol });
+      for (const pr of positionRecords) {
+        const marketValue = pr.quantity * latestPrice;
+        const unrealizedPL = (latestPrice - pr.avg_entry_price) * pr.quantity;
+        const unrealizedPLPct = ((latestPrice - pr.avg_entry_price) / pr.avg_entry_price) * 100;
+        await base44.asServiceRole.entities.Position.update(pr.id, {
+          current_price: latestPrice, market_value: marketValue,
+          unrealized_pl: unrealizedPL, unrealized_pl_pct: unrealizedPLPct,
+        });
+      }
+    }
+    return { symbol, action: 'hold', fast_ma: currFastMA.toFixed(2), slow_ma: currSlowMA.toFixed(2), strategy: strategyTag };
+  }
+}
+
+async function runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, strategyTag) {
+  const { score, direction, currFastMA, currSlowMA } = scoreConsensus(prices, fast_ma_period, slow_ma_period);
+
+  if (score < 3 || !direction) {
+    return { symbol, action: 'hold', message: `Consensus score ${score}/4 — no trade`, strategy: strategyTag };
+  }
+
+  const latestPrice = prices[prices.length - 1];
+  const existingPosition = openPositions.find((p) => p.symbol === symbol);
+  const hasPosition = existingPosition && parseFloat(existingPosition.qty) > 0;
+
+  if (direction === 'buy' && !hasPosition) {
+    const qty = Math.floor(max_per_trade / latestPrice);
+    if (qty < 1) return { symbol, message: 'Price too high for max_per_trade limit' };
+    try {
+      await placeOrder(symbol, 'buy', qty);
+      const totalValue = qty * latestPrice;
+      await base44.asServiceRole.entities.Trade.create({
+        symbol, action: 'buy', quantity: qty, price: latestPrice, total_value: totalValue,
+        status: 'executed', strategy: strategyTag,
+        reason: `[${strategyTag}] Consensus ${score}/4: buy signal`,
+        executed_at: new Date().toISOString(),
+      });
+      await base44.asServiceRole.entities.Position.create({
+        symbol, quantity: qty, avg_entry_price: latestPrice, current_price: latestPrice,
+        market_value: totalValue, unrealized_pl: 0, unrealized_pl_pct: 0,
+      });
+      return { symbol, action: 'buy', qty, price: latestPrice, score, strategy: strategyTag };
+    } catch (e) {
+      await base44.asServiceRole.entities.Trade.create({
+        symbol, action: 'buy', quantity: 0, price: latestPrice, total_value: 0,
+        status: 'failed', strategy: strategyTag, reason: e.message, executed_at: new Date().toISOString(),
+      });
+      return { symbol, error: e.message };
+    }
+  } else if (direction === 'sell' && hasPosition) {
+    const qty = parseFloat(existingPosition.qty);
+    const avgEntry = parseFloat(existingPosition.avg_entry_price);
+    try {
+      await placeOrder(symbol, 'sell', qty);
+      const totalValue = qty * latestPrice;
+      const tradeResult = (latestPrice - avgEntry) * qty;
+      await base44.asServiceRole.entities.Trade.create({
+        symbol, action: 'sell', quantity: qty, price: latestPrice, total_value: totalValue,
+        result: tradeResult, status: 'executed', strategy: strategyTag,
+        reason: `[${strategyTag}] Consensus ${score}/4: sell signal`,
+        executed_at: new Date().toISOString(),
+      });
+      const positionRecords = await base44.asServiceRole.entities.Position.filter({ symbol });
+      for (const pr of positionRecords) {
+        await base44.asServiceRole.entities.Position.delete(pr.id);
+      }
+      return { symbol, action: 'sell', qty, price: latestPrice, result: tradeResult, score, strategy: strategyTag };
+    } catch (e) {
+      await base44.asServiceRole.entities.Trade.create({
+        symbol, action: 'sell', quantity: qty, price: latestPrice, total_value: qty * latestPrice,
+        status: 'failed', strategy: strategyTag, reason: e.message, executed_at: new Date().toISOString(),
+      });
+      return { symbol, error: e.message };
+    }
+  }
+
+  return { symbol, action: 'hold', score, strategy: strategyTag };
 }
 
 Deno.serve(async (req) => {
@@ -76,21 +252,15 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // FIX 2: Replaced manual isMarketHours() with Alpaca clock check
     if (!await isMarketOpen()) {
       return Response.json({ message: 'Market is not open, skipping.', ran_at: new Date().toISOString() });
     }
 
-    // Fetch settings
     const settingsList = await base44.asServiceRole.entities.StrategySettings.list('-created_date', 1);
     const settings = settingsList[0];
 
-    if (!settings) {
-      return Response.json({ message: 'No strategy settings configured.' });
-    }
-    if (!settings.bot_enabled) {
-      return Response.json({ message: 'Bot is disabled.' });
-    }
+    if (!settings) return Response.json({ message: 'No strategy settings configured.' });
+    if (!settings.bot_enabled) return Response.json({ message: 'Bot is disabled.' });
 
     const {
       watchlist = [],
@@ -98,11 +268,10 @@ Deno.serve(async (req) => {
       daily_loss_limit = 500,
       fast_ma_period = 9,
       slow_ma_period = 21,
+      strategy_mode = 'simple',
     } = settings;
 
-    if (watchlist.length === 0) {
-      return Response.json({ message: 'Watchlist is empty.' });
-    }
+    if (watchlist.length === 0) return Response.json({ message: 'Watchlist is empty.' });
 
     // Check daily loss limit
     const today = new Date().toISOString().split('T')[0];
@@ -117,14 +286,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    // FIX 3: Pull fresh positions from Alpaca as source of truth before processing
     const openPositions = await getPositions();
     const results = [];
 
     for (const symbol of watchlist) {
-      // FIX 1: Buffer increased from slow_ma_period + 2 to slow_ma_period + 10
       const neededBars = slow_ma_period + 10;
-
       let prices;
       try {
         prices = await fetchBars(symbol, neededBars);
@@ -138,128 +304,22 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Current and previous MAs
-      const prevPrices = prices.slice(0, -1);
-      const currFastMA = calculateMA(prices, fast_ma_period);
-      const currSlowMA = calculateMA(prices, slow_ma_period);
-      const prevFastMA = calculateMA(prevPrices, fast_ma_period);
-      const prevSlowMA = calculateMA(prevPrices, slow_ma_period);
-
-      if (!currFastMA || !currSlowMA || !prevFastMA || !prevSlowMA) {
-        results.push({ symbol, message: 'Could not calculate MAs' });
-        continue;
-      }
-
-      const latestPrice = prices[prices.length - 1];
-
-      // FIX 3: Use Alpaca's live position as source of truth for qty and avg_entry
-      const existingPosition = openPositions.find((p) => p.symbol === symbol);
-      const hasPosition = existingPosition && parseFloat(existingPosition.qty) > 0;
-
-      // Golden cross: fast MA crosses above slow MA → BUY
-      const goldenCross = prevFastMA <= prevSlowMA && currFastMA > currSlowMA;
-      // Death cross: fast MA crosses below slow MA → SELL
-      const deathCross = prevFastMA >= prevSlowMA && currFastMA < currSlowMA;
-
-      if (goldenCross && !hasPosition) {
-        const qty = Math.floor(max_per_trade / latestPrice);
-        if (qty < 1) {
-          results.push({ symbol, message: 'Price too high for max_per_trade limit' });
-          continue;
-        }
-        try {
-          await placeOrder(symbol, 'buy', qty);
-          const totalValue = qty * latestPrice;
-          await base44.asServiceRole.entities.Trade.create({
-            symbol,
-            action: 'buy',
-            quantity: qty,
-            price: latestPrice,
-            total_value: totalValue,
-            status: 'executed',
-            reason: `Golden cross: fast MA (${currFastMA.toFixed(2)}) crossed above slow MA (${currSlowMA.toFixed(2)})`,
-            executed_at: new Date().toISOString(),
-          });
-          await base44.asServiceRole.entities.Position.create({
-            symbol,
-            quantity: qty,
-            avg_entry_price: latestPrice,
-            current_price: latestPrice,
-            market_value: totalValue,
-            unrealized_pl: 0,
-            unrealized_pl_pct: 0,
-          });
-          results.push({ symbol, action: 'buy', qty, price: latestPrice });
-        } catch (e) {
-          await base44.asServiceRole.entities.Trade.create({
-            symbol, action: 'buy', quantity: 0, price: latestPrice, total_value: 0,
-            status: 'failed', reason: e.message, executed_at: new Date().toISOString(),
-          });
-          results.push({ symbol, error: e.message });
-        }
-      } else if (deathCross && hasPosition) {
-        // FIX 3: Use Alpaca's actual qty and avg_entry_price as source of truth
-        const qty = parseFloat(existingPosition.qty);
-        const avgEntry = parseFloat(existingPosition.avg_entry_price);
-        try {
-          await placeOrder(symbol, 'sell', qty);
-          const totalValue = qty * latestPrice;
-          const tradeResult = (latestPrice - avgEntry) * qty;
-          await base44.asServiceRole.entities.Trade.create({
-            symbol,
-            action: 'sell',
-            quantity: qty,
-            price: latestPrice,
-            total_value: totalValue,
-            result: tradeResult,
-            status: 'executed',
-            reason: `Death cross: fast MA (${currFastMA.toFixed(2)}) crossed below slow MA (${currSlowMA.toFixed(2)})`,
-            executed_at: new Date().toISOString(),
-          });
-          // Remove position record from Base44 db
-          const positionRecords = await base44.asServiceRole.entities.Position.filter({ symbol });
-          for (const pr of positionRecords) {
-            await base44.asServiceRole.entities.Position.delete(pr.id);
-          }
-          results.push({ symbol, action: 'sell', qty, price: latestPrice, result: tradeResult });
-        } catch (e) {
-          await base44.asServiceRole.entities.Trade.create({
-            symbol, action: 'sell', quantity: qty, price: latestPrice, total_value: qty * latestPrice,
-            status: 'failed', reason: e.message, executed_at: new Date().toISOString(),
-          });
-          results.push({ symbol, error: e.message });
-        }
-      } else {
-        // No crossover — update position market value if holding
-        if (hasPosition) {
-          const positionRecords = await base44.asServiceRole.entities.Position.filter({ symbol });
-          for (const pr of positionRecords) {
-            const marketValue = pr.quantity * latestPrice;
-            const unrealizedPL = (latestPrice - pr.avg_entry_price) * pr.quantity;
-            const unrealizedPLPct = ((latestPrice - pr.avg_entry_price) / pr.avg_entry_price) * 100;
-            await base44.asServiceRole.entities.Position.update(pr.id, {
-              current_price: latestPrice,
-              market_value: marketValue,
-              unrealized_pl: unrealizedPL,
-              unrealized_pl_pct: unrealizedPLPct,
-            });
-          }
-        }
-        results.push({
-          symbol,
-          action: 'hold',
-          fast_ma: currFastMA.toFixed(2),
-          slow_ma: currSlowMA.toFixed(2),
-        });
+      if (strategy_mode === 'simple') {
+        const r = await runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, 'Simple');
+        results.push(r);
+      } else if (strategy_mode === 'consensus') {
+        const r = await runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, 'Consensus');
+        results.push(r);
+      } else if (strategy_mode === 'both') {
+        // Use half budget for each so total exposure stays the same
+        const halfBudget = max_per_trade / 2;
+        const rSimple = await runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, halfBudget, openPositions, 'Simple');
+        const rConsensus = await runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, halfBudget, openPositions, 'Consensus');
+        results.push(rSimple, rConsensus);
       }
     }
 
-    return Response.json({
-      success: true,
-      ran_at: new Date().toISOString(),
-      daily_loss: dailyLoss,
-      results,
-    });
+    return Response.json({ success: true, ran_at: new Date().toISOString(), strategy_mode, daily_loss: dailyLoss, results });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
