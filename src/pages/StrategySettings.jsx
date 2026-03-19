@@ -45,6 +45,8 @@ export default function StrategySettings() {
         bot_enabled: current.bot_enabled || false,
         strategy_mode: current.strategy_mode || "simple",
         consensus_threshold: current.consensus_threshold ?? 3,
+        ai_veto_enabled: current.ai_veto_enabled !== false,
+        veto_sensitivity: current.veto_sensitivity || "balanced",
       });
     }
   }, [current]);
