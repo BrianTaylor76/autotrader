@@ -118,6 +118,11 @@ async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma
     }
     // Gate BUY on AI veto
     if (isAIVetoed(aiSignal, aiVetoEnabled)) {
+      await sendPush(base44, {
+        title: 'AutoTrader: Trade Blocked 🛡️',
+        message: `AI Guard blocked ${symbol} buy. Claude: ${aiSignal.claude_reasoning || 'N/A'}. GPT: ${aiSignal.gpt_reasoning || 'N/A'}`,
+        priority: 0, sound: 'pushover', trigger_type: 'ai_veto_blocked', symbol,
+      });
       return {
         symbol, action: 'hold', strategy: strategyTag,
         message: `AI veto: ${aiSignal.claude_reasoning} / GPT: ${aiSignal.gpt_reasoning}`,
@@ -138,6 +143,11 @@ async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma
       await base44.asServiceRole.entities.Position.create({
         symbol, quantity: qty, avg_entry_price: latestPrice, current_price: latestPrice,
         market_value: totalValue, unrealized_pl: 0, unrealized_pl_pct: 0,
+      });
+      await sendPush(base44, {
+        title: `AutoTrader: BUY Executed`,
+        message: `${qty} shares of ${symbol} bought at $${latestPrice.toFixed(2)}. Total: $${totalValue.toFixed(2)}. Strategy: ${strategyTag}`,
+        priority: 0, sound: 'cashregister', trigger_type: 'trade_executed', symbol, value: String(totalValue.toFixed(2)),
       });
       return { symbol, action: 'buy', qty, price: latestPrice, strategy: strategyTag, consensus_score: consensusScore };
     } catch (e) {
@@ -168,6 +178,11 @@ async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma
       for (const pr of positionRecords) {
         await base44.asServiceRole.entities.Position.delete(pr.id);
       }
+      await sendPush(base44, {
+        title: `AutoTrader: SELL Executed`,
+        message: `${qty} shares of ${symbol} sold at $${latestPrice.toFixed(2)}. Total: $${totalValue.toFixed(2)}. Strategy: ${strategyTag}`,
+        priority: 0, sound: 'cashregister', trigger_type: 'trade_executed', symbol, value: String(totalValue.toFixed(2)),
+      });
       return { symbol, action: 'sell', qty, price: latestPrice, result: tradeResult, strategy: strategyTag };
     } catch (e) {
       await base44.asServiceRole.entities.Trade.create({
