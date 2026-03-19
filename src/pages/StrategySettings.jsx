@@ -302,6 +302,73 @@ export default function StrategySettings() {
         )}
       </Card>
 
+      {/* Push Notifications */}
+      <Card className="bg-card border-border p-6 space-y-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-foreground">
+            <Bell className="w-4 h-4 text-primary" />
+            <h3 className="font-semibold">Push Notifications</h3>
+          </div>
+          <Switch
+            checked={form.notifications_enabled}
+            onCheckedChange={(val) => setForm({ ...form, notifications_enabled: val })}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Sends real-time alerts to your phone via Pushover. Requires PUSHOVER_APP_TOKEN and PUSHOVER_USER_KEY in your environment variables.
+        </p>
+
+        {form.notifications_enabled && (
+          <div className="space-y-3">
+            {[
+              { key: "notif_trade_executed", label: "Trade Executed", desc: "Every buy or sell order" },
+              { key: "notif_ai_veto_blocked", label: "AI Veto Blocked", desc: "When AI Guard blocks a trade" },
+              { key: "notif_daily_loss_limit", label: "Daily Loss Limit Hit", desc: "When bot stops due to losses" },
+              { key: "notif_congress_large_trade", label: "Congress Large Trade", desc: "$50,000+ congressional trades" },
+              { key: "notif_sentiment_spike", label: "Unusual Sentiment Spike", desc: ">80% bullish or bearish on StockTwits" },
+            ].map((item) => (
+              <div key={item.key} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
+                <div>
+                  <p className="text-sm text-foreground">{item.label}</p>
+                  <p className="text-xs text-muted-foreground">{item.desc}</p>
+                </div>
+                <Switch
+                  checked={form[item.key] !== false}
+                  onCheckedChange={(val) => setForm({ ...form, [item.key]: val })}
+                />
+              </div>
+            ))}
+
+            <div className="pt-2">
+              <Button
+                variant="outline"
+                className="w-full border-border gap-2"
+                disabled={testSending}
+                onClick={async () => {
+                  setTestSending(true);
+                  try {
+                    await base44.functions.invoke("sendPushNotification", {
+                      title: "AutoTrader: Test Notification ✅",
+                      message: "Your Pushover integration is working correctly.",
+                      priority: 0,
+                      sound: "pushover",
+                      trigger_type: "test",
+                    });
+                    toast({ title: "Test sent!", description: "Check your Pushover app." });
+                  } catch {
+                    toast({ title: "Test failed", description: "Check your Pushover credentials.", variant: "destructive" });
+                  }
+                  setTestSending(false);
+                }}
+              >
+                <Send className="w-4 h-4" />
+                {testSending ? "Sending..." : "Send Test Notification"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Card>
+
       <Button
         onClick={() => saveMutation.mutate()}
         disabled={saveMutation.isPending}

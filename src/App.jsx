@@ -11,6 +11,7 @@ import StrategySettings from './pages/StrategySettings';
 import ApiSettings from './pages/ApiSettings';
 import Charts from './pages/Charts';
 import SignalConsole from './pages/SignalConsole';
+import Learn from './pages/Learn';
 import AppLayout from './components/layout/AppLayout';
 import { Navigate } from 'react-router-dom';
 
