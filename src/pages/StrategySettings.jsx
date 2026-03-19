@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import { Switch } from "@/components/ui/switch";
-import { Save, Plus, X, ListFilter, DollarSign, Activity, Layers, Shield } from "lucide-react";
+import { Save, Plus, X, ListFilter, DollarSign, Activity, Layers, Shield, Bell, Send } from "lucide-react";
 
 export default function StrategySettings() {
   const { toast } = useToast();
@@ -25,7 +25,14 @@ export default function StrategySettings() {
     consensus_threshold: 3,
     ai_veto_enabled: true,
     veto_sensitivity: "balanced",
+    notifications_enabled: true,
+    notif_trade_executed: true,
+    notif_ai_veto_blocked: true,
+    notif_daily_loss_limit: true,
+    notif_congress_large_trade: true,
+    notif_sentiment_spike: true,
   });
+  const [testSending, setTestSending] = useState(false);
 
   const { data: settings = [], isLoading } = useQuery({
     queryKey: ["settings"],
@@ -47,6 +54,12 @@ export default function StrategySettings() {
         consensus_threshold: current.consensus_threshold ?? 3,
         ai_veto_enabled: current.ai_veto_enabled !== false,
         veto_sensitivity: current.veto_sensitivity || "balanced",
+        notifications_enabled: current.notifications_enabled !== false,
+        notif_trade_executed: current.notif_trade_executed !== false,
+        notif_ai_veto_blocked: current.notif_ai_veto_blocked !== false,
+        notif_daily_loss_limit: current.notif_daily_loss_limit !== false,
+        notif_congress_large_trade: current.notif_congress_large_trade !== false,
+        notif_sentiment_spike: current.notif_sentiment_spike !== false,
       });
     }
   }, [current]);
