@@ -85,6 +85,27 @@ Deno.serve(async (req) => {
       })
     );
 
+    // Fire notifications for unusual sentiment spikes (>80% bullish or bearish)
+    for (const { symbol, bullish, bearish, sentiment_score } of fetched) {
+      const total = bullish + bearish;
+      if (total < 5) continue; // not enough data
+      if (sentiment_score >= 0.8) {
+        const pct = Math.round(sentiment_score * 100);
+        await sendPush(base44, {
+          title: 'AutoTrader: 📊 Sentiment Spike',
+          message: `${symbol} sentiment is ${pct}% bullish on StockTwits — unusual activity detected`,
+          priority: 0, sound: 'bike', trigger_type: 'sentiment_spike', symbol, value: `${pct}% bullish`,
+        });
+      } else if (sentiment_score <= 0.2) {
+        const pct = Math.round((1 - sentiment_score) * 100);
+        await sendPush(base44, {
+          title: 'AutoTrader: 📊 Sentiment Spike',
+          message: `${symbol} sentiment is ${pct}% bearish on StockTwits — unusual activity detected`,
+          priority: 0, sound: 'bike', trigger_type: 'sentiment_spike', symbol, value: `${pct}% bearish`,
+        });
+      }
+    }
+
     return Response.json({ success: true, results: fetched, fetched_at: new Date().toISOString() });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });

@@ -122,6 +122,22 @@ Deno.serve(async (req) => {
     await batchOp(existing, s => base44.asServiceRole.entities.CongressSignal.delete(s.id));
     await batchOp(records, r => base44.asServiceRole.entities.CongressSignal.create(r));
 
+    // Fire notifications for large trades ($50k+)
+    const LARGE_TRADE_AMOUNTS = ['$50,001 - $100,000', '$100,001 - $250,000', '$250,001 - $500,000', '$500,001 - $1,000,000', 'Over $1,000,000', '$1,000,001 - $5,000,000'];
+    const largeTrades = records.filter(r => {
+      const amt = (r.amount || '').replace(/,/g, '');
+      const num = parseFloat(amt.replace(/[^0-9.]/g, ''));
+      return num >= 50000 || LARGE_TRADE_AMOUNTS.some(a => r.amount?.includes(a.replace(/,/g, '')));
+    });
+    for (const trade of largeTrades.slice(0, 5)) {
+      const action = trade.transaction?.toLowerCase().includes('purchase') || trade.transaction?.toLowerCase().includes('buy') ? 'bought' : 'sold';
+      await sendPush(base44, {
+        title: 'AutoTrader: 🏛️ Congress Alert',
+        message: `${trade.representative} ${action} ${trade.amount} of ${trade.symbol} on ${trade.date}`,
+        priority: 1, sound: 'magic', trigger_type: 'congress_large_trade', symbol: trade.symbol, value: trade.amount,
+      });
+    }
+
     return Response.json({
       success: true,
       count: records.length,
