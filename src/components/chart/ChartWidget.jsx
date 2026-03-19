@@ -153,7 +153,15 @@ export default function ChartWidget({ symbols = [], defaultSymbol, height = 320,
       </div>
 
       <div className={compact ? "p-2" : "p-2 md:p-3"}>
-        {loading && bars.length === 0 ? (
+        {error ? (
+          <div className="flex items-center justify-center" style={{ height }}>
+            <div className="flex flex-col items-center gap-3">
+              <Wifi className="w-5 h-5 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">{error}</p>
+              <button onClick={fetchData} className="text-xs text-primary hover:underline">Retry</button>
+            </div>
+          </div>
+        ) : loading && bars.length === 0 ? (
           <div className="flex items-center justify-center" style={{ height }}>
             <div className="flex flex-col items-center gap-3">
               <RefreshCw className="w-5 h-5 text-muted-foreground animate-spin" />
