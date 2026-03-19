@@ -16,14 +16,18 @@ function calculateMA(prices, period) {
 
 // Use daily bars (always available, not market-hours dependent)
 async function fetchDailyBars(symbol, limit) {
-  const url = `${ALPACA_DATA_URL}/v2/stocks/${symbol}/bars?timeframe=1Day&limit=${limit}&adjustment=raw&feed=iex`;
-  const res = await fetch(url, {
-    headers: alpacaHeaders,
-    signal: AbortSignal.timeout(6000),
-  }).catch(() => null);
-  if (!res?.ok) return [];
-  const data = await res.json().catch(() => ({}));
-  return (data.bars || []).map((b) => b.c);
+  try {
+    const url = `${ALPACA_DATA_URL}/v2/stocks/${symbol}/bars?timeframe=1Day&limit=${limit}&adjustment=raw&feed=iex`;
+    const res = await fetch(url, {
+      headers: alpacaHeaders,
+      signal: AbortSignal.timeout(6000),
+    }).catch(() => null);
+    if (!res?.ok) return [];
+    const data = await res.json().catch(() => ({}));
+    return (data.bars || []).map((b) => b.c);
+  } catch {
+    return [];
+  }
 }
 
 function scoreSymbol(symbol, prices, fast_ma, slow_ma, arkSymbolSet, congressSignals, sentimentSignals) {

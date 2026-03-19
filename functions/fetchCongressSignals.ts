@@ -17,7 +17,7 @@ function normalizeTransaction(raw) {
   if (!raw) return 'Purchase';
   const lower = raw.toLowerCase().replace(/[\s_-]+/g, '_');
   for (const [key, val] of Object.entries(TRANSACTION_MAP)) {
-    if (lower.includes(key.replace('_', ''))) return val;
+    if (lower.includes(key.replace(/_/g, ''))) return val;
   }
   return raw;
 }
@@ -39,7 +39,6 @@ Deno.serve(async (req) => {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 30);
 
-    // Fetch both sources in parallel with a timeout
     const [houseRes, senateRes] = await Promise.all([
       fetch(HOUSE_URL, { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(10000) }).catch(() => null),
       fetch(SENATE_URL, { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(10000) }).catch(() => null),
@@ -61,19 +60,26 @@ Deno.serve(async (req) => {
 
     const filtered = all
       .filter(item => {
-        const dateStr = item.transaction_date || item.TransactionDate || item.date || item.Date || '';
+        // Handle both field name formats for date
+        const dateStr = item.disclosure_date || item.transaction_date || item.TransactionDate || item.date || item.Date || '';
         if (!dateStr) return false;
         const d = new Date(dateStr);
         return !isNaN(d.getTime()) && d >= cutoff;
       })
-      .slice(0, 100); // Cap at 100 most recent records to stay within time limits
+      .slice(0, 100);
 
     const records = filtered
       .map(item => {
-        const symbol = (item.ticker || item.Ticker || item.asset_description || '').toUpperCase().trim();
+        // Handle both field name formats for symbol
+        const symbol = (item.ticker || item.symbol || item.Ticker || item.Symbol || item.asset_description || '').toUpperCase().trim();
         if (!symbol || symbol.length > 10) return null;
-        const dateStr = item.transaction_date || item.TransactionDate || item.date || item.Date || '';
-        const rawTxn = item.type || item.transaction_type || item.Transaction || item.transaction || '';
+
+        // Handle both field name formats for date
+        const dateStr = item.disclosure_date || item.transaction_date || item.TransactionDate || item.date || item.Date || '';
+
+        // Handle both field name formats for transaction type
+        const rawTxn = item.transaction || item.type || item.transaction_type || item.Transaction || '';
+
         return {
           symbol,
           representative: item.representative || item.Representative || item.name || item.senator || 'Unknown',
@@ -84,7 +90,6 @@ Deno.serve(async (req) => {
       })
       .filter(Boolean);
 
-    // Delete old + create new in parallel batches
     const existing = await base44.asServiceRole.entities.CongressSignal.list('-created_date', 500);
     await batchOp(existing, s => base44.asServiceRole.entities.CongressSignal.delete(s.id));
     await batchOp(records, r => base44.asServiceRole.entities.CongressSignal.create(r));
