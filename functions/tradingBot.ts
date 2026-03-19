@@ -58,7 +58,7 @@ async function placeOrder(symbol, side, qty) {
 }
 
 // Simple MA crossover strategy gated by consensus score for BUY
-async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, strategyTag, consensusScore, consensus_threshold) {
+async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, strategyTag, consensusScore, consensus_threshold, aiVetoed = false, aiVetoReason = null) {
   const prevPrices = prices.slice(0, -1);
   const currFastMA = calculateMA(prices, fast_ma_period);
   const currSlowMA = calculateMA(prices, slow_ma_period);
@@ -78,6 +78,10 @@ async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma
   const scoreLabel = consensusScore !== null ? `consensus ${consensusScore}/4` : 'no consensus data';
 
   if (goldenCross && !hasPosition) {
+    // AI Veto gate
+    if (aiVetoed) {
+      return { symbol, action: 'hold', message: aiVetoReason, strategy: strategyTag, ai_vetoed: true };
+    }
     // Gate BUY on consensus score
     if (consensusScore !== null && consensusScore < consensus_threshold) {
       return { symbol, action: 'hold', message: `Golden cross but ${scoreLabel} below threshold (${consensus_threshold})`, strategy: strategyTag };
@@ -152,7 +156,7 @@ async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma
 }
 
 // Consensus strategy: requires total_score >= threshold to BUY, <= 1 to SELL
-async function runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, strategyTag, consensusScore, consensus_threshold) {
+async function runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, strategyTag, consensusScore, consensus_threshold, aiVetoed = false, aiVetoReason = null) {
   const prevPrices = prices.slice(0, -1);
   const currFastMA = calculateMA(prices, fast_ma_period);
   const currSlowMA = calculateMA(prices, slow_ma_period);
@@ -171,6 +175,10 @@ async function runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow
 
   const score = consensusScore ?? 0;
   const scoreLabel = `consensus ${score}/4`;
+
+  if (goldenCross && !hasPosition && aiVetoed) {
+    return { symbol, action: 'hold', message: aiVetoReason, strategy: strategyTag, ai_vetoed: true };
+  }
 
   if (goldenCross && !hasPosition && score >= consensus_threshold) {
     const qty = Math.floor(max_per_trade / latestPrice);
@@ -252,6 +260,7 @@ Deno.serve(async (req) => {
       slow_ma_period = 21,
       strategy_mode = 'simple',
       consensus_threshold = 3,
+      ai_veto_enabled = true,
     } = settings;
 
     if (watchlist.length === 0) return Response.json({ message: 'Watchlist is empty.' });
@@ -269,11 +278,20 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Load latest ConsensusScores for gating
-    const allScores = await base44.asServiceRole.entities.ConsensusScore.list('-scored_at', 200);
+    // Load latest ConsensusScores and AISignals for gating (in parallel)
+    const [allScores, allAISignals] = await Promise.all([
+      base44.asServiceRole.entities.ConsensusScore.list('-scored_at', 200),
+      ai_veto_enabled ? base44.asServiceRole.entities.AISignal.list('-analyzed_at', 200) : Promise.resolve([]),
+    ]);
+
     const consensusMap = {};
     for (const cs of allScores) {
       if (!consensusMap[cs.symbol]) consensusMap[cs.symbol] = cs;
+    }
+
+    const aiSignalMap = {};
+    for (const ai of allAISignals) {
+      if (!aiSignalMap[ai.symbol.toUpperCase()]) aiSignalMap[ai.symbol.toUpperCase()] = ai;
     }
 
     const openPositions = await getPositions();
@@ -295,17 +313,25 @@ Deno.serve(async (req) => {
       }
 
       const csScore = consensusMap[symbol]?.total_score ?? null;
+      const aiSignal = aiSignalMap[symbol.toUpperCase()] || null;
+
+      // AI Veto: block BUY if enabled and verdict is "block"
+      // Note: veto is injected into both strategy functions via aiVetoed flag
+      const aiVetoed = ai_veto_enabled && aiSignal?.overall_verdict === 'block';
+      const aiVetoReason = aiVetoed
+        ? `AI veto: Claude: ${aiSignal.claude_reasoning} / GPT: ${aiSignal.gpt_reasoning}`
+        : null;
 
       if (strategy_mode === 'simple') {
-        const r = await runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, 'Simple', csScore, consensus_threshold);
+        const r = await runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, 'Simple', csScore, consensus_threshold, aiVetoed, aiVetoReason);
         results.push(r);
       } else if (strategy_mode === 'consensus') {
-        const r = await runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, 'Consensus', csScore, consensus_threshold);
+        const r = await runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, 'Consensus', csScore, consensus_threshold, aiVetoed, aiVetoReason);
         results.push(r);
       } else if (strategy_mode === 'both') {
         const halfBudget = max_per_trade / 2;
-        const rSimple = await runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, halfBudget, openPositions, 'Simple', csScore, consensus_threshold);
-        const rConsensus = await runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, halfBudget, openPositions, 'Consensus', csScore, consensus_threshold);
+        const rSimple = await runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, halfBudget, openPositions, 'Simple', csScore, consensus_threshold, aiVetoed, aiVetoReason);
+        const rConsensus = await runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, halfBudget, openPositions, 'Consensus', csScore, consensus_threshold, aiVetoed, aiVetoReason);
         results.push(rSimple, rConsensus);
       }
     }
