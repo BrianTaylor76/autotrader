@@ -7,29 +7,56 @@ const FINNHUB_KEY = Deno.env.get('FINNHUB_API_KEY');
 const SYSTEM_PROMPT = `You are a financial market analyst. Analyze the provided news headlines for a stock/ETF symbol and determine if the current news environment is bullish, bearish, or neutral for short-term trading. Consider market sentiment, macroeconomic signals, company-specific risks, and current events. Be concise and decisive.`;
 
 async function fetchYahooHeadlines(symbol) {
-  const url = `https://feeds.finance.yahoo.com/rss/2.0/headline?s=${symbol}&region=US&lang=en-US`;
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'Mozilla/5.0' },
-    signal: AbortSignal.timeout(6000),
-  }).catch(() => null);
-  if (!res?.ok) return [];
-  const text = await res.text().catch(() => '');
-  const matches = [...text.matchAll(/<title><!\[CDATA\[(.*?)\]\]><\/title>/g)];
-  return matches.map(m => m[1]).filter(t => t && !t.toLowerCase().includes('yahoo'));
+  try {
+    const url = `https://feeds.finance.yahoo.com/rss/2.0/headline?s=${symbol}&region=US&lang=en-US`;
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      signal: AbortSignal.timeout(8000),
+    }).catch(() => null);
+    if (!res?.ok) return [];
+    const xml = await res.text();
+    const titles = [];
+    const titleRegex = /<item>[\s\S]*?<title><!\[CDATA\[(.*?)\]\]><\/title>|<item>[\s\S]*?<title>(.*?)<\/title>/g;
+    let match;
+    while ((match = titleRegex.exec(xml)) !== null) {
+      const title = (match[1] || match[2] || '').trim();
+      if (title) titles.push(title);
+    }
+    return titles.slice(0, 10);
+  } catch {
+    return [];
+  }
 }
 
 async function fetchFinnhubHeadlines(symbol) {
-  const today = new Date().toISOString().split('T')[0];
-  const from = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  const url = `https://finnhub.io/api/v1/company-news?symbol=${symbol}&from=${from}&to=${today}&token=${FINNHUB_KEY}`;
-  const res = await fetch(url, { signal: AbortSignal.timeout(6000) }).catch(() => null);
-  if (!res?.ok) return [];
-  const data = await res.json().catch(() => []);
-  return (Array.isArray(data) ? data : []).map(a => a.headline).filter(Boolean);
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const from = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const url = `https://finnhub.io/api/v1/company-news?symbol=${symbol}&from=${from}&to=${today}&token=${FINNHUB_KEY}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) }).catch(() => null);
+    if (!res?.ok) return [];
+    const data = await res.json().catch(() => []);
+    return (Array.isArray(data) ? data : []).slice(0, 15).map(item => item.headline || '').filter(Boolean);
+  } catch {
+    return [];
+  }
 }
 
-async function askClaude(symbol, headlines) {
-  const userMsg = `Symbol: ${symbol}. Recent headlines: ${headlines.join(' | ')}. Return JSON only: { "sentiment": "bullish"|"bearish"|"neutral", "score": 1-10, "reasoning": "one sentence explanation" }`;
+function deduplicateHeadlines(headlines) {
+  const seen = new Set();
+  const result = [];
+  for (const h of headlines) {
+    const key = h.toLowerCase().trim();
+    if (!seen.has(key) && h.length > 5) {
+      seen.add(key);
+      result.push(h);
+    }
+  }
+  return result.slice(0, 10);
+}
+
+async function callClaude(symbol, headlines) {
+  const userPrompt = `Symbol: ${symbol}. Recent headlines: ${JSON.stringify(headlines)}. Return JSON only: { "sentiment": "bullish"|"bearish"|"neutral", "score": 1-10, "reasoning": "one sentence explanation" }`;
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -39,25 +66,21 @@ async function askClaude(symbol, headlines) {
     },
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 256,
+      max_tokens: 200,
       system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userMsg }],
+      messages: [{ role: 'user', content: userPrompt }],
     }),
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(30000),
   });
-  if (!res.ok) throw new Error(`Claude error: ${res.status}`);
+  if (!res.ok) throw new Error(`Claude API error: ${res.status}`);
   const data = await res.json();
-  const raw = data.content?.[0]?.text || '{}';
-  const json = JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] || '{}');
-  return {
-    sentiment: json.sentiment || 'neutral',
-    score: Number(json.score) || 5,
-    reasoning: json.reasoning || '',
-  };
+  const text = data.content?.[0]?.text || '{}';
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  return JSON.parse(jsonMatch ? jsonMatch[0] : text);
 }
 
-async function askGPT(symbol, headlines) {
-  const userMsg = `Symbol: ${symbol}. Recent headlines: ${headlines.join(' | ')}. Return JSON only: { "sentiment": "bullish"|"bearish"|"neutral", "score": 1-10, "reasoning": "one sentence explanation" }`;
+async function callGPT(symbol, headlines) {
+  const userPrompt = `Symbol: ${symbol}. Recent headlines: ${JSON.stringify(headlines)}. Return JSON only: { "sentiment": "bullish"|"bearish"|"neutral", "score": 1-10, "reasoning": "one sentence explanation" }`;
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -66,43 +89,42 @@ async function askGPT(symbol, headlines) {
     },
     body: JSON.stringify({
       model: 'gpt-4o',
-      max_tokens: 256,
+      max_tokens: 200,
+      response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: userMsg },
+        { role: 'user', content: userPrompt },
       ],
-      response_format: { type: 'json_object' },
     }),
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(30000),
   });
-  if (!res.ok) throw new Error(`GPT error: ${res.status}`);
+  if (!res.ok) throw new Error(`GPT API error: ${res.status}`);
   const data = await res.json();
-  const raw = data.choices?.[0]?.message?.content || '{}';
-  const json = JSON.parse(raw);
-  return {
-    sentiment: json.sentiment || 'neutral',
-    score: Number(json.score) || 5,
-    reasoning: json.reasoning || '',
-  };
+  return JSON.parse(data.choices[0].message.content);
 }
 
-function computeVerdict(claude, gpt, sensitivity) {
-  // strict: either AI bearish = block
-  // balanced: both must agree bearish to block
-  // lenient: both must be bearish with score <= 3
-  const claudeBearish = claude.sentiment === 'bearish';
-  const gptBearish = gpt.sentiment === 'bearish';
+function determineVerdict(claudeResult, gptResult, sensitivity) {
+  const claudeBearishStrong = claudeResult.sentiment === 'bearish' && claudeResult.score <= 4;
+  const gptBearishStrong = gptResult.sentiment === 'bearish' && gptResult.score <= 4;
+  const claudeBearishMild = claudeResult.sentiment === 'bearish' && claudeResult.score > 4;
+  const gptBearishMild = gptResult.sentiment === 'bearish' && gptResult.score > 4;
+  const claudeBearishLenient = claudeResult.sentiment === 'bearish' && claudeResult.score <= 3;
+  const gptBearishLenient = gptResult.sentiment === 'bearish' && gptResult.score <= 3;
 
   if (sensitivity === 'strict') {
-    if (claudeBearish && claude.score <= 4) return 'block';
-    if (gptBearish && gpt.score <= 4) return 'block';
+    // Either AI strongly bearish → block
+    if (claudeBearishStrong || gptBearishStrong) return 'block';
+    if (claudeBearishMild || gptBearishMild) return 'allow_caution';
     return 'allow';
-  } else if (sensitivity === 'lenient') {
-    if (claudeBearish && claude.score <= 3 && gptBearish && gpt.score <= 3) return 'block';
+  } else if (sensitivity === 'balanced') {
+    // Both AIs must agree to block
+    if (claudeBearishStrong && gptBearishStrong) return 'block';
+    if ((claudeBearishStrong || claudeBearishMild) && (gptBearishStrong || gptBearishMild)) return 'allow_caution';
     return 'allow';
   } else {
-    // balanced (default)
-    if (claudeBearish && claude.score <= 4 && gptBearish && gpt.score <= 4) return 'block';
+    // lenient: only block if score <= 3
+    if (claudeBearishLenient && gptBearishLenient) return 'block';
+    if (claudeBearishStrong || gptBearishStrong) return 'allow_caution';
     return 'allow';
   }
 }
@@ -127,66 +149,58 @@ Deno.serve(async (req) => {
     const existing = await base44.asServiceRole.entities.AISignal.list('-analyzed_at', 200);
     const existingBySymbol = Object.fromEntries(existing.map(e => [e.symbol.toUpperCase(), e]));
 
-    const results = await Promise.all(watchlist.map(async (symbol) => {
+    const results = [];
+
+    for (const symbol of watchlist) {
       try {
+        // Fetch headlines from both sources in parallel
         const [yahooHeadlines, finnhubHeadlines] = await Promise.all([
           fetchYahooHeadlines(symbol),
           fetchFinnhubHeadlines(symbol),
         ]);
 
-        // Combine + deduplicate
-        const seen = new Set();
-        const combined = [...yahooHeadlines, ...finnhubHeadlines].filter(h => {
-          const key = h.toLowerCase().slice(0, 60);
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        }).slice(0, 10);
+        const headlines = deduplicateHeadlines([...yahooHeadlines, ...finnhubHeadlines]);
 
-        if (combined.length === 0) {
-          // No headlines, default to allow
-          const payload = {
-            symbol, claude_sentiment: 'neutral', claude_reasoning: 'No headlines available', claude_score: 5,
-            gpt_sentiment: 'neutral', gpt_reasoning: 'No headlines available', gpt_score: 5,
-            overall_verdict: 'allow', headlines_analyzed: [], analyzed_at: new Date().toISOString(),
-          };
-          const prev = existingBySymbol[symbol.toUpperCase()];
-          if (prev) await base44.asServiceRole.entities.AISignal.update(prev.id, payload);
-          else await base44.asServiceRole.entities.AISignal.create(payload);
-          return { symbol, verdict: 'allow', note: 'no headlines' };
+        if (headlines.length === 0) {
+          results.push({ symbol, status: 'no_headlines' });
+          continue;
         }
 
-        const [claude, gpt] = await Promise.all([
-          askClaude(symbol, combined),
-          askGPT(symbol, combined),
+        // Call both AIs in parallel
+        const [claudeResult, gptResult] = await Promise.all([
+          callClaude(symbol, headlines),
+          callGPT(symbol, headlines),
         ]);
 
-        const overall_verdict = computeVerdict(claude, gpt, sensitivity);
+        const overall_verdict = determineVerdict(claudeResult, gptResult, sensitivity);
 
         const payload = {
           symbol,
-          claude_sentiment: claude.sentiment,
-          claude_reasoning: claude.reasoning,
-          claude_score: claude.score,
-          gpt_sentiment: gpt.sentiment,
-          gpt_reasoning: gpt.reasoning,
-          gpt_score: gpt.score,
+          claude_sentiment: claudeResult.sentiment || 'neutral',
+          claude_reasoning: claudeResult.reasoning || '',
+          claude_score: claudeResult.score || 5,
+          gpt_sentiment: gptResult.sentiment || 'neutral',
+          gpt_reasoning: gptResult.reasoning || '',
+          gpt_score: gptResult.score || 5,
           overall_verdict,
-          headlines_analyzed: combined,
+          headlines_analyzed: headlines,
           analyzed_at: new Date().toISOString(),
         };
 
         const prev = existingBySymbol[symbol.toUpperCase()];
-        if (prev) await base44.asServiceRole.entities.AISignal.update(prev.id, payload);
-        else await base44.asServiceRole.entities.AISignal.create(payload);
+        if (prev) {
+          await base44.asServiceRole.entities.AISignal.update(prev.id, payload);
+        } else {
+          await base44.asServiceRole.entities.AISignal.create(payload);
+        }
 
-        return { symbol, verdict: overall_verdict, claude: claude.sentiment, gpt: gpt.sentiment };
+        results.push({ symbol, overall_verdict, claude: claudeResult.sentiment, gpt: gptResult.sentiment });
       } catch (e) {
-        return { symbol, error: e.message };
+        results.push({ symbol, error: e.message });
       }
-    }));
+    }
 
-    return Response.json({ success: true, results, analyzed_at: new Date().toISOString() });
+    return Response.json({ success: true, count: results.length, results, analyzed_at: new Date().toISOString() });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
