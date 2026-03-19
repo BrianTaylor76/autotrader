@@ -220,9 +220,9 @@ Deno.serve(async (req) => {
 
         const payload = {
           symbol,
-          claude_sentiment: claudeResult.sentiment || 'neutral',
+          claude_sentiment: claudeResult.sentiment === 'unavailable' ? 'neutral' : (claudeResult.sentiment || 'neutral'),
           claude_reasoning: claudeResult.reasoning || '',
-          claude_score: claudeResult.score || 5,
+          claude_score: claudeResult.score || null,
           gpt_sentiment: gptResult.sentiment || 'neutral',
           gpt_reasoning: gptResult.reasoning || '',
           gpt_score: gptResult.score || 5,
