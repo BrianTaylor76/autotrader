@@ -72,7 +72,10 @@ async function callClaude(symbol, headlines) {
     }),
     signal: AbortSignal.timeout(30000),
   });
-  if (!res.ok) throw new Error(`Claude API error: ${res.status}`);
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`Claude API error: ${res.status} - ${errText}`);
+  }
   const data = await res.json();
   const text = data.content?.[0]?.text || '{}';
   const jsonMatch = text.match(/\{[\s\S]*\}/);
