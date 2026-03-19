@@ -19,7 +19,7 @@ Deno.serve(async (req) => {
     if (!symbol) return Response.json({ error: 'symbol is required' }, { status: 400 });
 
     const url = `${ALPACA_DATA_URL}/v2/stocks/${symbol}/bars?timeframe=${timeframe}&limit=${limit}&feed=iex&sort=asc`;
-    const res = await fetch(url, { headers });
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
 
     if (!res.ok) {
       const err = await res.text();
