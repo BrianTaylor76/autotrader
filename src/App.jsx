@@ -49,6 +49,7 @@ const AuthenticatedApp = () => {
         <Route path="/ApiSettings" element={<ApiSettings />} />
         <Route path="/Charts" element={<Charts />} />
         <Route path="/SignalConsole" element={<SignalConsole />} />
+        <Route path="/Learn" element={<Learn />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
