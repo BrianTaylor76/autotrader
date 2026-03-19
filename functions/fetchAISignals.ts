@@ -192,14 +192,30 @@ Deno.serve(async (req) => {
         }
 
         symDebug.steps.push('Calling Claude and GPT in parallel...');
-        const [claudeResult, gptResult] = await Promise.all([
+        const [claudeSettled, gptSettled] = await Promise.allSettled([
           callClaude(symbol, headlines),
           callGPT(symbol, headlines),
         ]);
+
+        const claudeResult = claudeSettled.status === 'fulfilled'
+          ? claudeSettled.value
+          : { sentiment: 'unavailable', score: null, reasoning: `Claude unavailable: ${claudeSettled.reason?.message || 'unknown error'}` };
+
+        const gptResult = gptSettled.status === 'fulfilled'
+          ? gptSettled.value
+          : null;
+
         symDebug.steps.push(`Claude: ${JSON.stringify(claudeResult)}`);
         symDebug.steps.push(`GPT: ${JSON.stringify(gptResult)}`);
 
-        const overall_verdict = determineVerdict(claudeResult, gptResult, sensitivity);
+        if (!gptResult) {
+          throw new Error(`GPT failed: ${gptSettled.reason?.message || 'unknown error'}`);
+        }
+
+        // If Claude unavailable, base verdict on GPT alone
+        const overall_verdict = claudeResult.sentiment === 'unavailable'
+          ? determineGPTOnlyVerdict(gptResult, sensitivity)
+          : determineVerdict(claudeResult, gptResult, sensitivity);
         symDebug.steps.push(`Verdict: ${overall_verdict}`);
 
         const payload = {
