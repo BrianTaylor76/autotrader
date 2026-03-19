@@ -72,7 +72,10 @@ async function callClaude(symbol, headlines) {
     }),
     signal: AbortSignal.timeout(30000),
   });
-  if (!res.ok) throw new Error(`Claude API error: ${res.status}`);
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => '');
+    throw new Error(`Claude API error ${res.status}: ${errBody}`);
+  }
   const data = await res.json();
   const text = data.content?.[0]?.text || '{}';
   const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -98,7 +101,10 @@ async function callGPT(symbol, headlines) {
     }),
     signal: AbortSignal.timeout(30000),
   });
-  if (!res.ok) throw new Error(`GPT API error: ${res.status}`);
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => '');
+    throw new Error(`GPT API error ${res.status}: ${errBody}`);
+  }
   const data = await res.json();
   return JSON.parse(data.choices[0].message.content);
 }
@@ -112,17 +118,14 @@ function determineVerdict(claudeResult, gptResult, sensitivity) {
   const gptBearishLenient = gptResult.sentiment === 'bearish' && gptResult.score <= 3;
 
   if (sensitivity === 'strict') {
-    // Either AI strongly bearish → block
     if (claudeBearishStrong || gptBearishStrong) return 'block';
     if (claudeBearishMild || gptBearishMild) return 'allow_caution';
     return 'allow';
   } else if (sensitivity === 'balanced') {
-    // Both AIs must agree to block
     if (claudeBearishStrong && gptBearishStrong) return 'block';
     if ((claudeBearishStrong || claudeBearishMild) && (gptBearishStrong || gptBearishMild)) return 'allow_caution';
     return 'allow';
   } else {
-    // lenient: only block if score <= 3
     if (claudeBearishLenient && gptBearishLenient) return 'block';
     if (claudeBearishStrong || gptBearishStrong) return 'allow_caution';
     return 'allow';
@@ -130,49 +133,74 @@ function determineVerdict(claudeResult, gptResult, sensitivity) {
 }
 
 Deno.serve(async (req) => {
+  const ran_at = new Date().toISOString();
+  let base44;
+  const debugInfo = {
+    env_check: {
+      ANTHROPIC_API_KEY: ANTHROPIC_KEY ? `present (${ANTHROPIC_KEY.length} chars)` : 'MISSING',
+      OPENAI_API_KEY: OPENAI_KEY ? `present (${OPENAI_KEY.length} chars)` : 'MISSING',
+      FINNHUB_API_KEY: FINNHUB_KEY ? `present (${FINNHUB_KEY.length} chars)` : 'MISSING',
+    },
+    steps: [],
+    symbol_results: [],
+  };
+
   try {
-    const base44 = createClientFromRequest(req);
+    base44 = createClientFromRequest(req);
+    debugInfo.steps.push('SDK initialized');
+
     const user = await base44.auth.me();
     if (!user || user.role !== 'admin') {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
+    debugInfo.steps.push(`Authenticated as ${user.email} (role: ${user.role})`);
 
     const settingsList = await base44.asServiceRole.entities.StrategySettings.list('-created_date', 1);
     const settings = settingsList[0];
     const watchlist = settings?.watchlist || [];
     const sensitivity = settings?.veto_sensitivity || 'balanced';
+    debugInfo.steps.push(`Watchlist: ${JSON.stringify(watchlist)}, sensitivity: ${sensitivity}`);
 
     if (watchlist.length === 0) {
-      return Response.json({ message: 'Watchlist is empty', count: 0 });
+      return Response.json({ message: 'Watchlist is empty', count: 0, debug: debugInfo });
     }
 
     const existing = await base44.asServiceRole.entities.AISignal.list('-analyzed_at', 200);
     const existingBySymbol = Object.fromEntries(existing.map(e => [e.symbol.toUpperCase(), e]));
+    debugInfo.steps.push(`Loaded ${existing.length} existing AISignal records`);
 
     const results = [];
 
     for (const symbol of watchlist) {
+      const symDebug = { symbol, steps: [] };
       try {
-        // Fetch headlines from both sources in parallel
         const [yahooHeadlines, finnhubHeadlines] = await Promise.all([
           fetchYahooHeadlines(symbol),
           fetchFinnhubHeadlines(symbol),
         ]);
+        symDebug.steps.push(`Yahoo: ${yahooHeadlines.length} headlines, Finnhub: ${finnhubHeadlines.length} headlines`);
 
         const headlines = deduplicateHeadlines([...yahooHeadlines, ...finnhubHeadlines]);
+        symDebug.steps.push(`Deduped headlines: ${headlines.length}`);
+        symDebug.headlines = headlines;
 
         if (headlines.length === 0) {
+          symDebug.steps.push('No headlines found, skipping AI calls');
+          debugInfo.symbol_results.push(symDebug);
           results.push({ symbol, status: 'no_headlines' });
           continue;
         }
 
-        // Call both AIs in parallel
+        symDebug.steps.push('Calling Claude and GPT in parallel...');
         const [claudeResult, gptResult] = await Promise.all([
           callClaude(symbol, headlines),
           callGPT(symbol, headlines),
         ]);
+        symDebug.steps.push(`Claude: ${JSON.stringify(claudeResult)}`);
+        symDebug.steps.push(`GPT: ${JSON.stringify(gptResult)}`);
 
         const overall_verdict = determineVerdict(claudeResult, gptResult, sensitivity);
+        symDebug.steps.push(`Verdict: ${overall_verdict}`);
 
         const payload = {
           symbol,
@@ -184,24 +212,49 @@ Deno.serve(async (req) => {
           gpt_score: gptResult.score || 5,
           overall_verdict,
           headlines_analyzed: headlines,
-          analyzed_at: new Date().toISOString(),
+          analyzed_at: ran_at,
         };
 
         const prev = existingBySymbol[symbol.toUpperCase()];
         if (prev) {
           await base44.asServiceRole.entities.AISignal.update(prev.id, payload);
+          symDebug.steps.push('Updated existing AISignal record');
         } else {
           await base44.asServiceRole.entities.AISignal.create(payload);
+          symDebug.steps.push('Created new AISignal record');
         }
 
+        debugInfo.symbol_results.push(symDebug);
         results.push({ symbol, overall_verdict, claude: claudeResult.sentiment, gpt: gptResult.sentiment });
       } catch (e) {
+        symDebug.error = e.message;
+        symDebug.stack = e.stack;
+        debugInfo.symbol_results.push(symDebug);
         results.push({ symbol, error: e.message });
+
+        // Save per-symbol error to DebugLog
+        await base44.asServiceRole.entities.DebugLog.create({
+          function_name: 'fetchAISignals',
+          error_message: `[${symbol}] ${e.message}`,
+          stack_trace: e.stack || '',
+          context: JSON.stringify(symDebug),
+          ran_at,
+        }).catch(() => {});
       }
     }
 
-    return Response.json({ success: true, count: results.length, results, analyzed_at: new Date().toISOString() });
+    return Response.json({ success: true, count: results.length, results, debug: debugInfo, analyzed_at: ran_at });
   } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    // Top-level error — save to DebugLog
+    if (base44) {
+      await base44.asServiceRole.entities.DebugLog.create({
+        function_name: 'fetchAISignals',
+        error_message: error.message,
+        stack_trace: error.stack || '',
+        context: JSON.stringify(debugInfo),
+        ran_at,
+      }).catch(() => {});
+    }
+    return Response.json({ error: error.message, stack: error.stack, debug: debugInfo }, { status: 500 });
   }
 });
