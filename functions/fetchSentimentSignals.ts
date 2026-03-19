@@ -1,5 +1,33 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.21';
 
+const PUSHOVER_USER_KEY = Deno.env.get('PUSHOVER_USER_KEY');
+const PUSHOVER_APP_TOKEN = Deno.env.get('PUSHOVER_APP_TOKEN');
+
+async function sendPush(base44, { title, message, priority = 0, sound = 'pushover', trigger_type, symbol, value }) {
+  const delivered_at = new Date().toISOString();
+  try {
+    if (!PUSHOVER_USER_KEY || !PUSHOVER_APP_TOKEN) throw new Error('Missing Pushover credentials');
+    const formData = new URLSearchParams();
+    formData.append('token', PUSHOVER_APP_TOKEN);
+    formData.append('user', PUSHOVER_USER_KEY);
+    formData.append('title', title);
+    formData.append('message', message);
+    formData.append('priority', String(priority));
+    formData.append('sound', sound);
+    const res = await fetch('https://api.pushover.net/1/messages.json', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: formData.toString(),
+      signal: AbortSignal.timeout(8000),
+    });
+    const result = await res.json().catch(() => ({}));
+    const status = res.ok && result.status === 1 ? 'sent' : 'failed';
+    await base44.asServiceRole.entities.NotificationLog.create({ trigger_type, title, message, symbol, value, delivered_at, status }).catch(() => {});
+  } catch (e) {
+    await base44.asServiceRole.entities.NotificationLog.create({ trigger_type, title, message, symbol, value, delivered_at, status: 'failed', error: e.message }).catch(() => {});
+  }
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);

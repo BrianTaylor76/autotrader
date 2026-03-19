@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, History, Settings, TrendingUp, LineChart, Radio } from "lucide-react";
+import { LayoutDashboard, History, Settings, TrendingUp, LineChart, Radio, BookOpen } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 
