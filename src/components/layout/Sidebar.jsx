@@ -1,12 +1,14 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { LayoutDashboard, History, Settings, Key, Activity, TrendingUp, LineChart, Radio } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { base44 } from "@/api/base44Client";
 
-const navItems = [
+const ALL_NAV_ITEMS = [
   { path: "/Dashboard", label: "Dashboard", icon: LayoutDashboard },
   { path: "/Charts", label: "Charts", icon: LineChart },
   { path: "/TradeHistory", label: "Trade History", icon: History },
-  { path: "/SignalConsole", label: "Signals", icon: Radio },
+  { path: "/SignalConsole", label: "Signals", icon: Radio, requiresConsensus: true },
   { path: "/StrategySettings", label: "Strategy", icon: Settings },
   { path: "/ApiSettings", label: "API Keys", icon: Key },
 ];
