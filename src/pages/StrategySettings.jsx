@@ -248,6 +248,47 @@ export default function StrategySettings() {
         </p>
       </Card>
 
+      <Card className="bg-card border-border p-6 space-y-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-foreground">
+            <Shield className="w-4 h-4 text-primary" />
+            <h3 className="font-semibold">AI Veto Guard</h3>
+          </div>
+          <Switch
+            checked={form.ai_veto_enabled}
+            onCheckedChange={(val) => setForm({ ...form, ai_veto_enabled: val })}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          When enabled, Claude and GPT-4o analyze recent news headlines before any BUY order. Bearish AI verdicts can veto trades. SELL orders are never blocked.
+        </p>
+        {form.ai_veto_enabled && (
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground uppercase tracking-wider">Veto Sensitivity</Label>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { value: "strict", label: "Strict", desc: "Either AI bearish = block" },
+                { value: "balanced", label: "Balanced", desc: "Both AIs must agree" },
+                { value: "lenient", label: "Lenient", desc: "Only block score ≤ 3" },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setForm({ ...form, veto_sensitivity: opt.value })}
+                  className={`p-3 rounded-lg border text-left transition-all ${
+                    form.veto_sensitivity === opt.value
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-secondary/30 text-muted-foreground hover:border-border/80 hover:text-foreground"
+                  }`}
+                >
+                  <p className="font-semibold text-sm">{opt.label}</p>
+                  <p className="text-[11px] mt-0.5 opacity-80">{opt.desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </Card>
+
       <Button
         onClick={() => saveMutation.mutate()}
         disabled={saveMutation.isPending}
