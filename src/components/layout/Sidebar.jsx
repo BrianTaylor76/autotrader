@@ -8,7 +8,7 @@ const ALL_NAV_ITEMS = [
   { path: "/Dashboard", label: "Dashboard", icon: LayoutDashboard },
   { path: "/Charts", label: "Charts", icon: LineChart },
   { path: "/TradeHistory", label: "Trade History", icon: History },
-  { path: "/SignalConsole", label: "Signals", icon: Radio, requiresConsensus: true },
+  { path: "/SignalConsole", label: "Signals", icon: Radio },
   { path: "/StrategySettings", label: "Strategy", icon: Settings },
   { path: "/ApiSettings", label: "API Keys", icon: Key },
 ];
