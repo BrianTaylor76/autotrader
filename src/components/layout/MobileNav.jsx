@@ -15,6 +15,14 @@ const ALL_NAV_ITEMS = [
 export default function MobileNav() {
   const location = useLocation();
 
+  const { data: settings = [] } = useQuery({
+    queryKey: ["settings"],
+    queryFn: () => base44.entities.StrategySettings.list("-created_date", 1),
+    staleTime: 30000,
+  });
+  const strategyMode = settings[0]?.strategy_mode || "simple";
+  const navItems = ALL_NAV_ITEMS.filter(item => !item.requiresConsensus || strategyMode !== "simple");
+
   return (
     <>
       {/* Top bar - logo only */}
