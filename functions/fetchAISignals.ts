@@ -109,6 +109,26 @@ async function callGPT(symbol, headlines) {
   return JSON.parse(data.choices[0].message.content);
 }
 
+function determineGPTOnlyVerdict(gptResult, sensitivity) {
+  const bearishStrong = gptResult.sentiment === 'bearish' && gptResult.score <= 4;
+  const bearishMild = gptResult.sentiment === 'bearish' && gptResult.score > 4;
+  const bearishLenient = gptResult.sentiment === 'bearish' && gptResult.score <= 3;
+
+  if (sensitivity === 'strict') {
+    if (bearishStrong) return 'block';
+    if (bearishMild) return 'allow_caution';
+    return 'allow';
+  } else if (sensitivity === 'balanced') {
+    if (bearishStrong) return 'block';
+    if (bearishMild) return 'allow_caution';
+    return 'allow';
+  } else {
+    if (bearishLenient) return 'block';
+    if (bearishStrong) return 'allow_caution';
+    return 'allow';
+  }
+}
+
 function determineVerdict(claudeResult, gptResult, sensitivity) {
   const claudeBearishStrong = claudeResult.sentiment === 'bearish' && claudeResult.score <= 4;
   const gptBearishStrong = gptResult.sentiment === 'bearish' && gptResult.score <= 4;
