@@ -7,8 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
-import { Save, Plus, X, ListFilter, DollarSign, Activity, Layers, ShieldCheck } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { Save, Plus, X, ListFilter, DollarSign, Activity, Layers, Shield } from "lucide-react";
 
 export default function StrategySettings() {
   const { toast } = useToast();
@@ -23,8 +23,6 @@ export default function StrategySettings() {
     bot_enabled: false,
     strategy_mode: "simple",
     consensus_threshold: 3,
-    ai_veto_enabled: true,
-    veto_sensitivity: "balanced",
   });
 
   const { data: settings = [], isLoading } = useQuery({
@@ -45,8 +43,6 @@ export default function StrategySettings() {
         bot_enabled: current.bot_enabled || false,
         strategy_mode: current.strategy_mode || "simple",
         consensus_threshold: current.consensus_threshold ?? 3,
-        ai_veto_enabled: current.ai_veto_enabled ?? true,
-        veto_sensitivity: current.veto_sensitivity || "balanced",
       });
     }
   }, [current]);
@@ -246,48 +242,6 @@ export default function StrategySettings() {
         <p className="text-xs text-muted-foreground">
           Buys require ≥ this many bullish signals (ARK, Congress, Sentiment, MA). Sells require ≤ 1.
         </p>
-      </Card>
-
-      {/* AI Veto Card */}
-      <Card className="bg-card border-border p-6 space-y-5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-foreground">
-            <ShieldCheck className="w-4 h-4 text-primary" />
-            <h3 className="font-semibold">AI Veto Guard</h3>
-          </div>
-          <Switch
-            checked={form.ai_veto_enabled}
-            onCheckedChange={(v) => setForm({ ...form, ai_veto_enabled: v })}
-          />
-        </div>
-        <p className="text-xs text-muted-foreground">
-          When enabled, Claude and GPT-4o analyze recent news before any BUY is executed. Bearish AI consensus blocks the trade.
-        </p>
-        {form.ai_veto_enabled && (
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Veto Sensitivity</p>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { value: "strict", label: "Strict", desc: "Either AI bearish → block" },
-                { value: "balanced", label: "Balanced", desc: "Both must agree to block" },
-                { value: "lenient", label: "Lenient", desc: "Both bearish score ≤3 → block" },
-              ].map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => setForm({ ...form, veto_sensitivity: opt.value })}
-                  className={`p-3 rounded-lg border text-left transition-all ${
-                    form.veto_sensitivity === opt.value
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border bg-secondary/30 text-muted-foreground hover:border-border/80 hover:text-foreground"
-                  }`}
-                >
-                  <p className="font-semibold text-sm">{opt.label}</p>
-                  <p className="text-[11px] mt-0.5 opacity-80">{opt.desc}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </Card>
 
       <Button
