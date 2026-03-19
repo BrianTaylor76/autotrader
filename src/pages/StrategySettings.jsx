@@ -23,6 +23,8 @@ export default function StrategySettings() {
     bot_enabled: false,
     strategy_mode: "simple",
     consensus_threshold: 3,
+    ai_veto_enabled: true,
+    veto_sensitivity: "balanced",
   });
 
   const { data: settings = [], isLoading } = useQuery({
