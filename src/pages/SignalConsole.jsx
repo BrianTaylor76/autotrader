@@ -4,9 +4,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { RefreshCw, Radio, TrendingUp, Users, BarChart2, MessageSquare, Clock } from "lucide-react";
+import { RefreshCw, Radio, TrendingUp, Users, BarChart2, MessageSquare, Clock, BrainCircuit } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { formatDistanceToNow } from "date-fns";
+import AISignalCell, { AIVerdictShield } from "@/components/signals/AISignalCell";
 
 const SIGNAL_COLS = [
   { key: "ma_signal", label: "MA Cross", icon: TrendingUp },
@@ -43,13 +44,13 @@ function SignalCell({ value }) {
   );
 }
 
-function ScoreBar({ score }) {
+function ScoreBar({ score, aiSignal }) {
   const colors = ["bg-destructive", "bg-destructive/70", "bg-yellow-500", "bg-primary/70", "bg-primary"];
-  const labels = ["", "", "", "", ""];
   const filled = colors[score] || "bg-muted";
 
   return (
     <div className="flex items-center gap-2 w-full">
+      <AIVerdictShield verdict={aiSignal?.overall_verdict} />
       <div className="flex gap-1 flex-1">
         {[0, 1, 2, 3].map((i) => (
           <div
@@ -85,21 +86,33 @@ export default function SignalConsole() {
     refetchInterval: 60000,
   });
 
+  const { data: aiSignals = [] } = useQuery({
+    queryKey: ["ai_signals"],
+    queryFn: () => base44.entities.AISignal.list("-analyzed_at", 100),
+    refetchInterval: 60000,
+  });
+
   const { data: settings = [] } = useQuery({
     queryKey: ["settings"],
     queryFn: () => base44.entities.StrategySettings.list("-created_date", 1),
   });
 
   const watchlist = settings[0]?.watchlist || [];
+  const aiVetoEnabled = settings[0]?.ai_veto_enabled ?? true;
 
-  // Merge scores with watchlist so unscored symbols show as rows too
+  const aiSignalMap = Object.fromEntries(aiSignals.map(a => [a.symbol.toUpperCase(), a]));
+
   const rows = watchlist.map((symbol) => {
     const score = scores.find((s) => s.symbol.toUpperCase() === symbol.toUpperCase());
-    return { symbol, score };
+    const aiSignal = aiSignalMap[symbol.toUpperCase()] || null;
+    return { symbol, score, aiSignal };
   });
 
-  // If no watchlist, fall back to scores list
-  const displayRows = rows.length > 0 ? rows : scores.map((s) => ({ symbol: s.symbol, score: s }));
+  const displayRows = rows.length > 0 ? rows : scores.map((s) => ({
+    symbol: s.symbol,
+    score: s,
+    aiSignal: aiSignalMap[s.symbol.toUpperCase()] || null,
+  }));
 
   const lastUpdated = scores.length > 0
     ? scores.reduce((latest, s) => {
@@ -110,33 +123,32 @@ export default function SignalConsole() {
 
   async function handleRefreshAll() {
     setRefreshing(true);
-    const steps = [
-      { fn: "fetchARKSignals", label: "Fetching ARK signals…" },
-      { fn: "fetchCongressSignals", label: "Fetching Congress signals…" },
-      { fn: "fetchSentimentSignals", label: "Fetching sentiment signals…" },
-      { fn: "scoreConsensus", label: "Scoring consensus…" },
-    ];
 
-    // Run ARK, Congress, Sentiment in parallel — then score after
     setRefreshStep("Fetching signals…");
-    const dataSteps = steps.slice(0, 3);
-    const results = await Promise.allSettled(dataSteps.map(s => base44.functions.invoke(s.fn, {})));
-    const anyFailed = results.some(r => r.status === "rejected");
+    const dataResults = await Promise.allSettled([
+      base44.functions.invoke("fetchARKSignals", {}),
+      base44.functions.invoke("fetchCongressSignals", {}),
+      base44.functions.invoke("fetchSentimentSignals", {}),
+    ]);
 
     setRefreshStep("Scoring consensus…");
-    try {
-      await base44.functions.invoke("scoreConsensus", {});
-    } catch {
-      // score step failed
+    await base44.functions.invoke("scoreConsensus", {}).catch(() => {});
+
+    if (aiVetoEnabled) {
+      setRefreshStep("Running AI analysis…");
+      await base44.functions.invoke("fetchAISignals", {}).catch(() => {});
     }
 
     setRefreshStep("");
     setRefreshing(false);
     queryClient.invalidateQueries({ queryKey: ["consensus_scores"] });
+    queryClient.invalidateQueries({ queryKey: ["ai_signals"] });
+
+    const anyFailed = dataResults.some(r => r.status === "rejected");
     if (anyFailed) {
       toast({ title: "Partially refreshed", description: "Some signal sources failed — scores updated with available data.", variant: "destructive" });
     } else {
-      toast({ title: "Signals refreshed", description: "All 4 signal sources updated and scored." });
+      toast({ title: "Signals refreshed", description: `All sources updated${aiVetoEnabled ? " + AI analysis complete" : ""}.` });
     }
   }
 
@@ -147,7 +159,7 @@ export default function SignalConsole() {
         <div>
           <h2 className="text-2xl font-bold text-foreground tracking-tight">Signal Console</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Multi-source consensus heatmap across your watchlist
+            Multi-source consensus + AI guard heatmap
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -157,12 +169,7 @@ export default function SignalConsole() {
               <span>Updated {formatDistanceToNow(lastUpdated, { addSuffix: true })}</span>
             </div>
           )}
-          <Button
-            onClick={handleRefreshAll}
-            disabled={refreshing}
-            variant="outline"
-            className="border-border gap-2"
-          >
+          <Button onClick={handleRefreshAll} disabled={refreshing} variant="outline" className="border-border gap-2">
             <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
             {refreshing ? refreshStep || "Refreshing…" : "Refresh Signals"}
           </Button>
@@ -184,7 +191,13 @@ export default function SignalConsole() {
           Neutral
         </div>
         <span className="text-border">|</span>
-        <span>Score bar: 0–4 bullish signals</span>
+        <span>Score: Consensus + AI Guard</span>
+        {aiVetoEnabled && (
+          <>
+            <span className="text-border">|</span>
+            <span className="flex items-center gap-1">🛡️ green = allow · 🛡️ red = block</span>
+          </>
+        )}
       </div>
 
       {/* Heatmap Table */}
@@ -208,9 +221,7 @@ export default function SignalConsole() {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-border">
-                      <th className="text-left px-5 py-3 text-xs uppercase tracking-wider text-muted-foreground font-medium w-24">
-                        Symbol
-                      </th>
+                      <th className="text-left px-5 py-3 text-xs uppercase tracking-wider text-muted-foreground font-medium w-24">Symbol</th>
                       {SIGNAL_COLS.map((col) => (
                         <th key={col.key} className="text-center px-4 py-3 text-xs uppercase tracking-wider text-muted-foreground font-medium">
                           <div className="flex items-center justify-center gap-1.5">
@@ -219,50 +230,49 @@ export default function SignalConsole() {
                           </div>
                         </th>
                       ))}
-                      <th className="text-center px-5 py-3 text-xs uppercase tracking-wider text-muted-foreground font-medium w-36">
+                      {aiVetoEnabled && (
+                        <th className="text-center px-4 py-3 text-xs uppercase tracking-wider text-muted-foreground font-medium min-w-[120px]">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <BrainCircuit className="w-3.5 h-3.5" />
+                            AI Analysis
+                          </div>
+                        </th>
+                      )}
+                      <th className="text-center px-5 py-3 text-xs uppercase tracking-wider text-muted-foreground font-medium w-44">
                         Score
                       </th>
-                      <th className="text-center px-5 py-3 text-xs uppercase tracking-wider text-muted-foreground font-medium w-24">
-                        Action
-                      </th>
-                      <th className="text-right px-5 py-3 text-xs uppercase tracking-wider text-muted-foreground font-medium w-32">
-                        Updated
-                      </th>
+                      <th className="text-center px-5 py-3 text-xs uppercase tracking-wider text-muted-foreground font-medium w-24">Action</th>
+                      <th className="text-right px-5 py-3 text-xs uppercase tracking-wider text-muted-foreground font-medium w-32">Updated</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {displayRows.map(({ symbol, score }, idx) => (
+                    {displayRows.map(({ symbol, score, aiSignal }, idx) => (
                       <tr
                         key={symbol}
-                        className={`border-b border-border/50 transition-colors hover:bg-accent/30 ${
-                          idx % 2 === 0 ? "" : "bg-secondary/20"
-                        }`}
+                        className={`border-b border-border/50 transition-colors hover:bg-accent/30 ${idx % 2 === 0 ? "" : "bg-secondary/20"}`}
                       >
                         <td className="px-5 py-4">
                           <span className="font-mono font-bold text-foreground text-sm">{symbol}</span>
                         </td>
                         {SIGNAL_COLS.map((col) => (
                           <td key={col.key} className="px-4 py-3">
-                            {score ? (
-                              <SignalCell value={score[col.key]} />
-                            ) : (
-                              <div className="text-center text-xs text-muted-foreground">—</div>
-                            )}
+                            {score ? <SignalCell value={score[col.key]} /> : <div className="text-center text-xs text-muted-foreground">—</div>}
                           </td>
                         ))}
+                        {aiVetoEnabled && (
+                          <td className="px-4 py-3">
+                            <AISignalCell aiSignal={aiSignal} />
+                          </td>
+                        )}
                         <td className="px-5 py-3">
                           {score ? (
-                            <ScoreBar score={score.total_score} />
+                            <ScoreBar score={score.total_score} aiSignal={aiVetoEnabled ? aiSignal : null} />
                           ) : (
                             <div className="text-xs text-muted-foreground text-center">No data</div>
                           )}
                         </td>
                         <td className="px-5 py-3 text-center">
-                          {score ? (
-                            <RecommendationBadge rec={score.recommendation} />
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
+                          {score ? <RecommendationBadge rec={score.recommendation} /> : <span className="text-xs text-muted-foreground">—</span>}
                         </td>
                         <td className="px-5 py-3 text-right">
                           {score?.scored_at ? (
@@ -283,20 +293,19 @@ export default function SignalConsole() {
 
           {/* Mobile cards */}
           <div className="md:hidden space-y-3">
-            {displayRows.map(({ symbol, score }) => (
+            {displayRows.map(({ symbol, score, aiSignal }) => (
               <Card key={symbol} className="bg-card border-border p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="font-mono font-bold text-foreground">{symbol}</span>
-                  {score ? (
-                    <RecommendationBadge rec={score.recommendation} />
-                  ) : (
-                    <Badge variant="secondary" className="text-xs text-muted-foreground">No data</Badge>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {aiVetoEnabled && <AIVerdictShield verdict={aiSignal?.overall_verdict} />}
+                    {score ? <RecommendationBadge rec={score.recommendation} /> : <Badge variant="secondary" className="text-xs text-muted-foreground">No data</Badge>}
+                  </div>
                 </div>
 
                 {score ? (
                   <>
-                    <ScoreBar score={score.total_score} />
+                    <ScoreBar score={score.total_score} aiSignal={aiVetoEnabled ? aiSignal : null} />
                     <div className="grid grid-cols-2 gap-2">
                       {SIGNAL_COLS.map((col) => (
                         <div key={col.key}>
@@ -307,6 +316,14 @@ export default function SignalConsole() {
                         </div>
                       ))}
                     </div>
+                    {aiVetoEnabled && aiSignal && (
+                      <div>
+                        <p className="text-[10px] text-muted-foreground mb-1 flex items-center gap-1">
+                          <BrainCircuit className="w-3 h-3" /> AI Analysis
+                        </p>
+                        <AISignalCell aiSignal={aiSignal} />
+                      </div>
+                    )}
                     <p className="text-[10px] text-muted-foreground flex items-center gap-1">
                       <Clock className="w-3 h-3" />
                       {formatDistanceToNow(new Date(score.scored_at), { addSuffix: true })}
@@ -324,12 +341,13 @@ export default function SignalConsole() {
       {/* Signal source info */}
       <Card className="bg-card border-border p-5">
         <h3 className="text-sm font-semibold text-foreground mb-3">Signal Sources</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {[
             { icon: TrendingUp, label: "MA Crossover", desc: "Fast MA vs slow MA position (live Alpaca data)" },
             { icon: BarChart2, label: "ARK Holdings", desc: "Symbol in ARKK Innovation ETF holdings" },
             { icon: Users, label: "Congress Trades", desc: "Net House + Senate purchases vs sales (30 days)" },
             { icon: MessageSquare, label: "StockTwits", desc: "Bullish/bearish ratio from last 30 posts" },
+            { icon: BrainCircuit, label: "AI Guard", desc: "Claude + GPT-4o dual news analysis veto layer" },
           ].map((src) => (
             <div key={src.label} className="flex items-start gap-3 p-3 rounded-lg bg-secondary/30">
               <src.icon className="w-4 h-4 text-primary mt-0.5 shrink-0" />
