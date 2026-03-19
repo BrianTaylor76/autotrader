@@ -23,6 +23,7 @@ export default function ChartWidget({ symbols = [], defaultSymbol, height = 320,
   const [latestPrice, setLatestPrice] = useState(null);
   const [prevPrice, setPrevPrice] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [pulsing, setPulsing] = useState(false);
   const isFetching = useRef(false);
@@ -30,23 +31,29 @@ export default function ChartWidget({ symbols = [], defaultSymbol, height = 320,
   const fetchData = useCallback(async () => {
     if (!symbol || isFetching.current) return;
     isFetching.current = true;
-    setLoading((prev) => !prev ? true : prev);
-    const res = await base44.functions.invoke("getChartData", {
-      symbol,
-      timeframe: timeframe.value,
-      limit: timeframe.limit,
-    });
-    const data = res.data;
-    if (data?.bars) {
-      setBars(data.bars);
-      setPrevPrice(latestPrice);
-      setLatestPrice(data.latestPrice);
-      setLastUpdated(new Date());
-      setPulsing(true);
-      setTimeout(() => setPulsing(false), 1000);
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await base44.functions.invoke("getChartData", {
+        symbol,
+        timeframe: timeframe.value,
+        limit: timeframe.limit,
+      });
+      const data = res.data;
+      if (data?.bars) {
+        setBars(data.bars);
+        setPrevPrice(latestPrice);
+        setLatestPrice(data.latestPrice);
+        setLastUpdated(new Date());
+        setPulsing(true);
+        setTimeout(() => setPulsing(false), 1000);
+      }
+    } catch {
+      setError("Failed to load chart data");
+    } finally {
+      setLoading(false);
+      isFetching.current = false;
     }
-    setLoading(false);
-    isFetching.current = false;
   }, [symbol, timeframe]);
 
   // Initial fetch + symbol/timeframe change
