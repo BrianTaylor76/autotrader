@@ -1,5 +1,4 @@
 import React, { useMemo } from "react";
-import React, { useMemo } from "react";
 import { Card } from "@/components/ui/card";
 
 export default function CongressStatsRow({ trades }) {

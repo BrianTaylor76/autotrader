@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import React, { useState } from "react";
 import { Shield } from "lucide-react";
 
 function sentimentColor(sentiment) {
