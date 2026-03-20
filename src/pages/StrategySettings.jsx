@@ -18,11 +18,11 @@ export default function StrategySettings() {
     watchlist: [],
     max_per_trade: 1000,
     daily_loss_limit: 500,
-    fast_ma_period: 9,
-    slow_ma_period: 21,
+    fast_ma_period: 5,
+    slow_ma_period: 13,
     bot_enabled: false,
     strategy_mode: "simple",
-    consensus_threshold: 3,
+    consensus_threshold: 2,
     ai_veto_enabled: true,
     veto_sensitivity: "balanced",
     notifications_enabled: true,
@@ -47,11 +47,11 @@ export default function StrategySettings() {
         watchlist: current.watchlist || [],
         max_per_trade: current.max_per_trade || 1000,
         daily_loss_limit: current.daily_loss_limit || 500,
-        fast_ma_period: current.fast_ma_period || 9,
-        slow_ma_period: current.slow_ma_period || 21,
+        fast_ma_period: current.fast_ma_period || 5,
+        slow_ma_period: current.slow_ma_period || 13,
         bot_enabled: current.bot_enabled || false,
         strategy_mode: current.strategy_mode || "simple",
-        consensus_threshold: current.consensus_threshold ?? 3,
+        consensus_threshold: current.consensus_threshold ?? 2,
         ai_veto_enabled: current.ai_veto_enabled !== false,
         veto_sensitivity: current.veto_sensitivity || "balanced",
         notifications_enabled: current.notifications_enabled !== false,
@@ -120,7 +120,7 @@ export default function StrategySettings() {
         <div className="grid grid-cols-3 gap-2">
           {[
             { value: "simple", label: "Simple", desc: "MA Crossover only" },
-            { value: "consensus", label: "Consensus", desc: "4-signal, 3/4 threshold" },
+            { value: "consensus", label: "Consensus", desc: "4-signal, 2/4 threshold" },
             { value: "both", label: "Both", desc: "Run both, split budget" },
           ].map((opt) => (
             <button
@@ -209,7 +209,7 @@ export default function StrategySettings() {
             <Input
               type="number"
               value={form.fast_ma_period}
-              onChange={(e) => setForm({ ...form, fast_ma_period: parseInt(e.target.value) || 9 })}
+              onChange={(e) => setForm({ ...form, fast_ma_period: parseInt(e.target.value) || 5 })}
               className="bg-secondary border-border font-mono"
             />
           </div>
@@ -218,13 +218,13 @@ export default function StrategySettings() {
             <Input
               type="number"
               value={form.slow_ma_period}
-              onChange={(e) => setForm({ ...form, slow_ma_period: parseInt(e.target.value) || 21 })}
+              onChange={(e) => setForm({ ...form, slow_ma_period: parseInt(e.target.value) || 13 })}
               className="bg-secondary border-border font-mono"
             />
           </div>
         </div>
         <p className="text-xs text-muted-foreground">
-          Bot buys when the fast MA crosses above the slow MA, and sells when it crosses below.
+          Bot uses 5-minute price bars. Buys when the 5-period MA crosses above the 13-period MA, sells when it crosses below.
         </p>
       </Card>
 
@@ -257,7 +257,7 @@ export default function StrategySettings() {
           </div>
         </div>
         <p className="text-xs text-muted-foreground">
-          Buys require ≥ this many bullish signals (ARK, Congress, Sentiment, MA). Sells require ≤ 1.
+          Buys require ≥ this many bullish signals (ARK, Congress, Sentiment, MA). 2/4 signals required. Sells require ≤ 2.
         </p>
       </Card>
 
@@ -281,7 +281,7 @@ export default function StrategySettings() {
             <div className="grid grid-cols-3 gap-2">
               {[
                 { value: "strict", label: "Strict", desc: "Either AI bearish = block" },
-                { value: "balanced", label: "Balanced", desc: "Both AIs must agree" },
+                { value: "balanced", label: "Balanced", desc: "Both bearish ≤3 = block" },
                 { value: "lenient", label: "Lenient", desc: "Only block score ≤ 3" },
               ].map((opt) => (
                 <button

@@ -130,26 +130,18 @@ function determineGPTOnlyVerdict(gptResult, sensitivity) {
 }
 
 function determineVerdict(claudeResult, gptResult, sensitivity) {
-  const claudeBearishStrong = claudeResult.sentiment === 'bearish' && claudeResult.score <= 4;
-  const gptBearishStrong = gptResult.sentiment === 'bearish' && gptResult.score <= 4;
-  const claudeBearishMild = claudeResult.sentiment === 'bearish' && claudeResult.score > 4;
-  const gptBearishMild = gptResult.sentiment === 'bearish' && gptResult.score > 4;
-  const claudeBearishLenient = claudeResult.sentiment === 'bearish' && claudeResult.score <= 3;
-  const gptBearishLenient = gptResult.sentiment === 'bearish' && gptResult.score <= 3;
+  const claudeBearishStrong = claudeResult.sentiment === 'bearish' && claudeResult.score <= 3;
+  const gptBearishStrong = gptResult.sentiment === 'bearish' && gptResult.score <= 3;
+  const claudeIsBearish = claudeResult.sentiment === 'bearish';
+  const gptIsBearish = gptResult.sentiment === 'bearish';
 
-  if (sensitivity === 'strict') {
-    if (claudeBearishStrong || gptBearishStrong) return 'block';
-    if (claudeBearishMild || gptBearishMild) return 'allow_caution';
-    return 'allow';
-  } else if (sensitivity === 'balanced') {
-    if (claudeBearishStrong && gptBearishStrong) return 'block';
-    if ((claudeBearishStrong || claudeBearishMild) && (gptBearishStrong || gptBearishMild)) return 'allow_caution';
-    return 'allow';
-  } else {
-    if (claudeBearishLenient && gptBearishLenient) return 'block';
-    if (claudeBearishStrong || gptBearishStrong) return 'allow_caution';
-    return 'allow';
-  }
+  // Core rule: BOTH must be bearish with score <= 3 to block
+  if (claudeBearishStrong && gptBearishStrong) return 'block';
+
+  // If only one is bearish (other is neutral/bullish) → caution only
+  if (claudeIsBearish || gptIsBearish) return 'allow_caution';
+
+  return 'allow';
 }
 
 Deno.serve(async (req) => {
@@ -178,7 +170,7 @@ Deno.serve(async (req) => {
     const settingsList = await base44.asServiceRole.entities.StrategySettings.list('-created_date', 1);
     const settings = settingsList[0];
     const watchlist = settings?.watchlist || [];
-    const sensitivity = settings?.veto_sensitivity || 'balanced';
+    const sensitivity = settings?.veto_sensitivity || 'balanced'; // default balanced
     debugInfo.steps.push(`Watchlist: ${JSON.stringify(watchlist)}, sensitivity: ${sensitivity}`);
 
     if (watchlist.length === 0) {

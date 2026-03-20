@@ -54,7 +54,7 @@ function calculateMA(prices, period) {
 }
 
 async function fetchBars(symbol, limit) {
-  const url = `${ALPACA_DATA_URL}/v2/stocks/${symbol}/bars?timeframe=1Min&limit=${limit}&feed=iex`;
+  const url = `${ALPACA_DATA_URL}/v2/stocks/${symbol}/bars?timeframe=5Min&limit=${limit}&feed=iex`;
   const res = await fetch(url, { headers: alpacaHeaders });
   if (!res.ok) {
     const err = await res.text();
@@ -159,8 +159,8 @@ async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma
     }
   } else if (deathCross && hasPosition) {
     // SELLS are NOT blocked by AI veto
-    if (consensusScore !== null && consensusScore > 1) {
-      return { symbol, action: 'hold', message: `Death cross but ${scoreLabel} still above 1 — holding`, strategy: strategyTag };
+    if (consensusScore !== null && consensusScore > 2) {
+      return { symbol, action: 'hold', message: `Death cross but ${scoreLabel} still above 2 — holding`, strategy: strategyTag };
     }
     const qty = parseFloat(existingPosition.qty);
     const avgEntry = parseFloat(existingPosition.avg_entry_price);
@@ -271,7 +271,7 @@ async function runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow
       });
       return { symbol, error: e.message };
     }
-  } else if (deathCross && hasPosition && score <= 1) {
+  } else if (deathCross && hasPosition && score <= 2) {
     // SELLS are NOT blocked by AI veto
     const qty = parseFloat(existingPosition.qty);
     const avgEntry = parseFloat(existingPosition.avg_entry_price);
@@ -282,7 +282,7 @@ async function runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow
       await base44.asServiceRole.entities.Trade.create({
         symbol, action: 'sell', quantity: qty, price: latestPrice, total_value: totalValue,
         result: tradeResult, status: 'executed', strategy: strategyTag,
-        reason: `[${strategyTag}] Death cross confirmed by ${scoreLabel} (sell threshold: ≤1)`,
+        reason: `[${strategyTag}] Death cross confirmed by ${scoreLabel} (sell threshold: ≤2)`,
         executed_at: new Date().toISOString(),
       });
       const positionRecords = await base44.asServiceRole.entities.Position.filter({ symbol });
@@ -329,10 +329,10 @@ Deno.serve(async (req) => {
       watchlist = [],
       max_per_trade = 1000,
       daily_loss_limit = 500,
-      fast_ma_period = 9,
-      slow_ma_period = 21,
+      fast_ma_period = 5,
+      slow_ma_period = 13,
       strategy_mode = 'simple',
-      consensus_threshold = 3,
+      consensus_threshold = 2,
       ai_veto_enabled = true,
     } = settings;
 

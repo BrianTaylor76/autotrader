@@ -60,7 +60,7 @@ function ScoreBar({ score, aiVerdict }) {
       </div>
       <div className="flex items-center">
         <span className={`text-sm font-bold font-mono tabular-nums w-6 text-right ${
-          score >= 3 ? "text-primary" : score === 2 ? "text-yellow-400" : "text-destructive"
+          score >= 2 ? "text-primary" : score === 1 ? "text-yellow-400" : "text-destructive"
         }`}>
           {score}/4
         </span>
@@ -198,7 +198,7 @@ export default function SignalConsole() {
           Neutral
         </div>
         <span className="text-border">|</span>
-        <span>Score: 0–4 bullish signals</span>
+        <span>Score: 0–4 bullish signals · 2/4 minimum to trade</span>
         {aiVetoEnabled && (
           <>
             <span className="text-border">|</span>
@@ -373,7 +373,7 @@ export default function SignalConsole() {
             { icon: BarChart2, label: "ARK Holdings", desc: "Symbol in ARKK Innovation ETF holdings" },
             { icon: Users, label: "Congress Trades", desc: "Net House + Senate purchases vs sales (30 days)" },
             { icon: MessageSquare, label: "StockTwits", desc: "Bullish/bearish ratio from last 30 posts" },
-            { icon: Brain, label: "AI Guard", desc: "Claude + GPT-4o dual news sentiment analysis with trade veto" },
+            { icon: Brain, label: "AI Guard", desc: "Both Claude + GPT must agree bearish to veto" },
           ].map((src) => (
             <div key={src.label} className="flex items-start gap-3 p-3 rounded-lg bg-secondary/30">
               <src.icon className="w-4 h-4 text-primary mt-0.5 shrink-0" />
