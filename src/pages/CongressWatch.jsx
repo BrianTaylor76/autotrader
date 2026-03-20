@@ -101,7 +101,8 @@ export default function CongressWatch() {
     if (cutoffDate) {
       result = result.filter(t => {
         if (!t.disclosure_date) return false;
-        try { return isAfter(parseISO(t.disclosure_date), cutoffDate); } catch { return false; }
+        const d = new Date(t.disclosure_date);
+        return !isNaN(d) && d >= cutoffDate;
       });
     }
 
