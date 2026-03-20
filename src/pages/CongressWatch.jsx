@@ -1,16 +1,16 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { formatDistanceToNow, differenceInDays, parseISO } from "date-fns";
-import { RefreshCw, Search, Clock, ChevronDown, ChevronRight, X } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
+import { RefreshCw, Search, Clock, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
-import MemberPanel from "@/components/congress/MemberPanel";
 import WatchedSection from "@/components/congress/WatchedSection";
 import CongressStatsRow from "@/components/congress/CongressStatsRow";
 import TradeRow from "@/components/congress/TradeRow";
+
+const PAGE_SIZE = 50;
 
 const STATES = [
   "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
@@ -37,8 +37,10 @@ function FilterBtn({ active, onClick, children }) {
 export default function CongressWatch() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const bgFetchRef = useRef(false);
 
   const [refreshing, setRefreshing] = useState(false);
+  const [bgLoading, setBgLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [chamber, setChamber] = useState("All");
   const [party, setParty] = useState("All");
@@ -46,14 +48,16 @@ export default function CongressWatch() {
   const [sort, setSort] = useState("Most Recent");
   const [stateFilter, setStateFilter] = useState("All");
   const [expandedRow, setExpandedRow] = useState(null);
-  const [selectedMember, setSelectedMember] = useState(null);
-  const [watchedMembers, setWatchedMembers] = useState(() => {
+  const [page, setPage] = useState(1);
+  const [jumpPage, setJumpPage] = useState("");
+  const [watchedMembers] = useState(() => {
     try { return JSON.parse(localStorage.getItem("watched_congress_members") || "[]"); } catch { return []; }
   });
 
+  // Load only 500 most recent trades initially
   const { data: trades = [], isLoading } = useQuery({
     queryKey: ["congress_trades"],
-    queryFn: () => base44.entities.CongressTrade.list("-disclosure_date", 2000),
+    queryFn: () => base44.entities.CongressTrade.list("-disclosure_date", 500),
     staleTime: 300000,
   });
 
@@ -71,14 +75,20 @@ export default function CongressWatch() {
 
   const lastUpdated = useMemo(() => {
     if (!trades.length) return null;
-    return trades.reduce((latest, t) => {
-      const d = new Date(t.updated_date || t.created_date);
-      return d > latest ? d : latest;
-    }, new Date(0));
+    const d = new Date(trades[0]?.updated_date || trades[0]?.created_date);
+    return isNaN(d.getTime()) ? null : d;
   }, [trades]);
 
+  // Reset to page 1 when filters change
+  useEffect(() => { setPage(1); }, [search, chamber, party, txType, stateFilter, sort]);
+
   const filtered = useMemo(() => {
-    let result = [...trades];
+    let result = trades;
+
+    if (chamber !== "All") result = result.filter(t => t.chamber === chamber);
+    if (party !== "All") result = result.filter(t => t.party === party);
+    if (txType !== "All") result = result.filter(t => t.transaction === txType.toLowerCase());
+    if (stateFilter !== "All") result = result.filter(t => t.state === stateFilter);
     if (search) {
       const q = search.toLowerCase();
       result = result.filter(t =>
@@ -87,55 +97,66 @@ export default function CongressWatch() {
         t.symbol?.toLowerCase().includes(q)
       );
     }
-    if (chamber !== "All") result = result.filter(t => t.chamber === chamber);
-    if (party !== "All") result = result.filter(t => t.party === party);
-    if (txType !== "All") result = result.filter(t => t.transaction === txType.toLowerCase());
-    if (stateFilter !== "All") result = result.filter(t => t.state === stateFilter);
 
     if (sort === "Most Recent") {
-      result.sort((a, b) => new Date(b.disclosure_date) - new Date(a.disclosure_date));
+      result = [...result].sort((a, b) => new Date(b.disclosure_date) - new Date(a.disclosure_date));
     } else if (sort === "Symbol A-Z") {
-      result.sort((a, b) => (a.symbol || "").localeCompare(b.symbol || ""));
+      result = [...result].sort((a, b) => (a.symbol || "").localeCompare(b.symbol || ""));
     } else if (sort === "Most Active Member") {
       const counts = {};
       trades.forEach(t => { counts[t.representative] = (counts[t.representative] || 0) + 1; });
-      result.sort((a, b) => (counts[b.representative] || 0) - (counts[a.representative] || 0));
+      result = [...result].sort((a, b) => (counts[b.representative] || 0) - (counts[a.representative] || 0));
     } else if (sort === "Largest Amount") {
       const rank = { "$500,001 +": 5, "$100,001 - $250,000": 4, "$50,001 - $100,000": 3, "$15,001 - $50,000": 2 };
-      result.sort((a, b) => (rank[b.amount_range] || 0) - (rank[a.amount_range] || 0));
+      result = [...result].sort((a, b) => (rank[b.amount_range] || 0) - (rank[a.amount_range] || 0));
     }
+
     return result;
   }, [trades, search, chamber, party, txType, stateFilter, sort]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pageSlice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   async function handleRefresh() {
     setRefreshing(true);
     try {
+      // Fetch new records from APIs
       await base44.functions.invoke("fetchCongressTrades", {});
-      queryClient.invalidateQueries({ queryKey: ["congress_trades"] });
-      toast({ title: "Congress Watch updated", description: "Latest trades fetched from House & Senate." });
+      // Reload first 500
+      await queryClient.invalidateQueries({ queryKey: ["congress_trades"] });
+      toast({ title: "Congress Watch updated", description: "Latest trades fetched." });
+
+      // Background: silently load more
+      if (!bgFetchRef.current) {
+        bgFetchRef.current = true;
+        setBgLoading(true);
+        setTimeout(async () => {
+          try {
+            await queryClient.prefetchQuery({
+              queryKey: ["congress_trades_full"],
+              queryFn: () => base44.entities.CongressTrade.list("-disclosure_date", 5000),
+              staleTime: 300000,
+            });
+          } finally {
+            setBgLoading(false);
+            bgFetchRef.current = false;
+          }
+        }, 2000);
+      }
     } catch (e) {
       toast({ title: "Refresh failed", description: e.message, variant: "destructive" });
     }
     setRefreshing(false);
   }
 
-  function toggleWatch(memberName) {
-    setWatchedMembers(prev => {
-      const next = prev.includes(memberName)
-        ? prev.filter(m => m !== memberName)
-        : [...prev, memberName];
-      localStorage.setItem("watched_congress_members", JSON.stringify(next));
-      return next;
-    });
+  function goToPage(p) {
+    setPage(Math.max(1, Math.min(p, totalPages)));
+    setExpandedRow(null);
   }
 
-  const memberTrades = useMemo(() => {
-    if (!selectedMember) return [];
-    return trades.filter(t => t.representative === selectedMember);
-  }, [trades, selectedMember]);
-
   return (
-    <div className="space-y-5 relative">
+    <div className="space-y-5">
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
@@ -143,7 +164,12 @@ export default function CongressWatch() {
           <p className="text-sm text-muted-foreground mt-1">Real-time congressional trading activity</p>
         </div>
         <div className="flex items-center gap-3">
-          {lastUpdated && lastUpdated.getTime() > 0 && (
+          {bgLoading && (
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <RefreshCw className="w-3 h-3 animate-spin" /> Loading more…
+            </span>
+          )}
+          {lastUpdated && (
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Clock className="w-3.5 h-3.5" />
               <span>Updated {formatDistanceToNow(lastUpdated, { addSuffix: true })}</span>
@@ -247,14 +273,13 @@ export default function CongressWatch() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((trade, idx) => (
+                {pageSlice.map((trade, idx) => (
                   <TradeRow
                     key={trade.id || idx}
                     trade={trade}
                     isHot={hotSymbols.has(trade.symbol?.toUpperCase())}
                     expanded={expandedRow === (trade.id || idx)}
                     onToggleExpand={() => setExpandedRow(expandedRow === (trade.id || idx) ? null : (trade.id || idx))}
-                    onMemberClick={() => setSelectedMember(trade.representative)}
                     isWatched={watchedMembers.includes(trade.representative)}
                     idx={idx}
                   />
@@ -262,8 +287,69 @@ export default function CongressWatch() {
               </tbody>
             </table>
           </div>
-          <div className="px-4 py-3 border-t border-border text-xs text-muted-foreground">
-            Showing {filtered.length} of {trades.length} trades
+
+          {/* Pagination */}
+          <div className="px-4 py-3 border-t border-border flex items-center justify-between flex-wrap gap-3">
+            <span className="text-xs text-muted-foreground">
+              {filtered.length} trades · Page {safePage} of {totalPages}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => goToPage(safePage - 1)}
+                disabled={safePage <= 1}
+                className="h-7 px-2"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              {/* Page numbers */}
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                const start = Math.max(1, Math.min(safePage - 2, totalPages - 4));
+                const p = start + i;
+                return (
+                  <button
+                    key={p}
+                    onClick={() => goToPage(p)}
+                    className={`h-7 w-7 rounded text-xs font-medium transition-colors ${
+                      p === safePage
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                );
+              })}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => goToPage(safePage + 1)}
+                disabled={safePage >= totalPages}
+                className="h-7 px-2"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+              {/* Jump to page */}
+              <div className="flex items-center gap-1.5 ml-1">
+                <span className="text-xs text-muted-foreground">Go:</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={totalPages}
+                  value={jumpPage}
+                  onChange={e => setJumpPage(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") {
+                      goToPage(Number(jumpPage));
+                      setJumpPage("");
+                    }
+                  }}
+                  placeholder="…"
+                  className="w-12 h-7 bg-secondary border border-border rounded text-xs text-foreground text-center focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+              </div>
+            </div>
           </div>
         </Card>
       )}
@@ -272,20 +358,9 @@ export default function CongressWatch() {
       <WatchedSection
         trades={trades}
         watchedMembers={watchedMembers}
-        onUnwatch={toggleWatch}
+        onUnwatch={() => {}}
         hotSymbols={hotSymbols}
       />
-
-      {/* Member Panel */}
-      {selectedMember && (
-        <MemberPanel
-          member={selectedMember}
-          trades={memberTrades}
-          isWatched={watchedMembers.includes(selectedMember)}
-          onToggleWatch={() => toggleWatch(selectedMember)}
-          onClose={() => setSelectedMember(null)}
-        />
-      )}
     </div>
   );
 }
