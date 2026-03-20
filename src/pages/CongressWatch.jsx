@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { formatDistanceToNow, subDays, subMonths, parseISO, isAfter } from "date-fns";
+import { formatDistanceToNow, subDays } from "date-fns";
 import { RefreshCw, Search, Clock, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
