@@ -27,22 +27,25 @@ export default function ChartWidget({ symbols = [], defaultSymbol, height = 320,
   const [lastUpdated, setLastUpdated] = useState(null);
   const [pulsing, setPulsing] = useState(false);
   const isFetching = useRef(false);
+  const symbolRef = useRef(symbol);
+  const timeframeRef = useRef(timeframe);
 
   const fetchData = useCallback(async () => {
-    if (!symbol || isFetching.current) return;
+    const sym = symbolRef.current;
+    const tf = timeframeRef.current;
+    if (!sym || isFetching.current) return;
     isFetching.current = true;
     setLoading(true);
     setError(null);
     try {
       const res = await base44.functions.invoke("getChartData", {
-        symbol,
-        timeframe: timeframe.value,
-        limit: timeframe.limit,
+        symbol: sym,
+        timeframe: tf.value,
+        limit: tf.limit,
       });
       const data = res.data;
       if (data?.bars) {
         setBars(data.bars);
-        setPrevPrice(latestPrice);
         setLatestPrice(data.latestPrice);
         setLastUpdated(new Date());
         setPulsing(true);
@@ -54,20 +57,22 @@ export default function ChartWidget({ symbols = [], defaultSymbol, height = 320,
       setLoading(false);
       isFetching.current = false;
     }
-  }, [symbol, timeframe]);
+  }, []);
 
   // Initial fetch + symbol/timeframe change
   useEffect(() => {
+    symbolRef.current = symbol;
+    timeframeRef.current = timeframe;
     setBars([]);
     setLatestPrice(null);
     fetchData();
   }, [symbol, timeframe]);
 
-  // Auto-refresh every 30s
+  // Auto-refresh every 30s — stable, no dependency on fetchData
   useEffect(() => {
-    const interval = setInterval(fetchData, REFRESH_INTERVAL);
+    const interval = setInterval(() => fetchData(), REFRESH_INTERVAL);
     return () => clearInterval(interval);
-  }, [fetchData]);
+  }, []);
 
   // Sync symbol if parent changes defaultSymbol
   useEffect(() => {
