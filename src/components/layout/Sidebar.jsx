@@ -11,6 +11,7 @@ const ALL_NAV_ITEMS = [
   { path: "/SignalConsole", label: "Signals", icon: Radio },
   { path: "/StrategySettings", label: "Strategy", icon: Settings },
   { path: "/ApiSettings", label: "API Keys", icon: Key },
+  { path: "/CongressWatch", label: "Congress Watch", icon: Landmark },
   { path: "/Learn", label: "Learn", icon: BookOpen },
 ];
 

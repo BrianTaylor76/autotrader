@@ -10,6 +10,7 @@ const ALL_NAV_ITEMS = [
   { path: "/TradeHistory", label: "History", icon: History },
   { path: "/SignalConsole", label: "Signals", icon: Radio },
   { path: "/StrategySettings", label: "Strategy", icon: Settings },
+  { path: "/CongressWatch", label: "Congress", icon: Landmark },
   { path: "/Learn", label: "Learn", icon: BookOpen },
 ];
 

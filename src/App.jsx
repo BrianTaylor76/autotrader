@@ -27,6 +27,7 @@ function App() {
             <Route path="/Charts" element={<Charts />} />
             <Route path="/SignalConsole" element={<SignalConsole />} />
             <Route path="/Learn" element={<Learn />} />
+            <Route path="/CongressWatch" element={<CongressWatch />} />
           </Route>
         </Routes>
       </Router>
