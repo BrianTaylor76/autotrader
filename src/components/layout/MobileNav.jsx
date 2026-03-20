@@ -38,7 +38,7 @@ export default function MobileNav() {
       </div>
 
       {/* Bottom tab bar */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 h-16 bg-card border-t border-border flex items-center z-40 safe-area-bottom">
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-card border-t border-border flex items-center z-40 pb-safe pt-2 px-0" style={{ height: 'max(64px, calc(env(safe-area-inset-bottom) + 64px))' }}>
         {navItems.map((item) => {
           const isActive = location.pathname === item.path;
           return (
