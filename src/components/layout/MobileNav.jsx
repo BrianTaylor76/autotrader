@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, History, Settings, TrendingUp, LineChart, Radio, BookOpen, Building2 } from "lucide-react";
+import { LayoutDashboard, History, Settings, TrendingUp, LineChart, Radio, BookOpen, Landmark } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 
@@ -10,7 +10,7 @@ const ALL_NAV_ITEMS = [
   { path: "/TradeHistory", label: "History", icon: History },
   { path: "/SignalConsole", label: "Signals", icon: Radio },
   { path: "/StrategySettings", label: "Strategy", icon: Settings },
-  { path: "/CongressWatch", label: "Congress", icon: Building2 },
+  { path: "/CongressWatch", label: "Congress", icon: Landmark },
   { path: "/Learn", label: "Learn", icon: BookOpen },
 ];
 

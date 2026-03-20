@@ -1,5 +1,10 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.21';
 
+function inferParty(name) {
+  // Basic heuristic — API doesn't always provide party
+  return "Unknown";
+}
+
 function normalizeTransaction(t) {
   if (!t) return "buy";
   const lower = t.toLowerCase();
@@ -21,7 +26,7 @@ async function fetchHouse() {
     representative: r.representative || r.name || "",
     chamber: "House",
     state: r.state || "",
-    party: r.party || "Unknown",
+    party: r.party || inferParty(r.representative),
     symbol: (r.ticker || r.symbol || "").toUpperCase().trim(),
     transaction: normalizeTransaction(r.type || r.transaction_type),
     amount_range: normalizeAmount(r.amount),
@@ -29,7 +34,7 @@ async function fetchHouse() {
     transaction_date: r.transaction_date || r.disclosure_date || "",
     description: r.asset_description || r.description || "",
     source_id: `house-${r.disclosure_date}-${r.representative}-${r.ticker || r.symbol}-${r.transaction_date}`,
-  })).filter(r => r.symbol && r.symbol !== "--" && r.symbol.length <= 10 && r.representative);
+  })).filter(r => r.symbol && r.symbol !== "--" && r.representative);
 }
 
 async function fetchSenate() {
@@ -40,7 +45,7 @@ async function fetchSenate() {
     representative: r.senator || r.name || r.representative || "",
     chamber: "Senate",
     state: r.state || "",
-    party: r.party || "Unknown",
+    party: r.party || inferParty(r.senator),
     symbol: (r.ticker || r.symbol || "").toUpperCase().trim(),
     transaction: normalizeTransaction(r.type || r.transaction_type),
     amount_range: normalizeAmount(r.amount),
@@ -48,7 +53,7 @@ async function fetchSenate() {
     transaction_date: r.transaction_date || r.disclosure_date || "",
     description: r.asset_description || r.description || "",
     source_id: `senate-${r.disclosure_date}-${(r.senator || r.name)}-${r.ticker || r.symbol}-${r.transaction_date}`,
-  })).filter(r => r.symbol && r.symbol !== "--" && r.symbol.length <= 10 && r.representative);
+  })).filter(r => r.symbol && r.symbol !== "--" && r.representative);
 }
 
 Deno.serve(async (req) => {
@@ -57,32 +62,20 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-    // Fetch full historical datasets from both APIs (no date filtering)
-    const [houseResult, senateResult] = await Promise.allSettled([fetchHouse(), fetchSenate()]);
+    const [houseRecords, senateRecords] = await Promise.allSettled([fetchHouse(), fetchSenate()]);
 
-    const house = houseResult.status === "fulfilled" ? houseResult.value : [];
-    const senate = senateResult.status === "fulfilled" ? senateResult.value : [];
+    const house = houseRecords.status === "fulfilled" ? houseRecords.value : [];
+    const senate = senateRecords.status === "fulfilled" ? senateRecords.value : [];
     const all = [...house, ...senate];
 
-    // Load all existing source_ids in batches to avoid hitting limits
-    const existingIds = new Set();
-    let offset = 0;
-    const LOAD_BATCH = 2000;
-    while (true) {
-      const batch = await base44.asServiceRole.entities.CongressTrade.list("-disclosure_date", LOAD_BATCH);
-      if (!batch.length) break;
-      batch.forEach(e => { if (e.source_id) existingIds.add(e.source_id); });
-      if (batch.length < LOAD_BATCH) break;
-      offset += LOAD_BATCH;
-      // Safety cap — avoid infinite loop if entity has huge dataset
-      if (offset >= 50000) break;
-    }
+    // Get existing source_ids to avoid duplicates
+    const existing = await base44.asServiceRole.entities.CongressTrade.list("-disclosure_date", 5000);
+    const existingIds = new Set(existing.map(e => e.source_id).filter(Boolean));
 
     const newRecords = all.filter(r => r.source_id && !existingIds.has(r.source_id));
 
-    // Insert in batches of 100
     let inserted = 0;
-    const BATCH = 100;
+    const BATCH = 50;
     for (let i = 0; i < newRecords.length; i += BATCH) {
       const batch = newRecords.slice(i, i + BATCH);
       await base44.asServiceRole.entities.CongressTrade.bulkCreate(batch);
@@ -96,8 +89,8 @@ Deno.serve(async (req) => {
       inserted,
       skipped: all.length - newRecords.length,
       errors: {
-        house: houseResult.status === "rejected" ? houseResult.reason?.message : null,
-        senate: senateResult.status === "rejected" ? senateResult.reason?.message : null,
+        house: houseRecords.status === "rejected" ? houseRecords.reason?.message : null,
+        senate: senateRecords.status === "rejected" ? senateRecords.reason?.message : null,
       }
     });
   } catch (error) {
