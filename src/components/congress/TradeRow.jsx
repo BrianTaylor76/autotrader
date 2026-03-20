@@ -17,7 +17,7 @@ function AmountBadge({ amount }) {
   );
 }
 
-export default function TradeRow({ trade, isHot, expanded, onToggleExpand, onMemberClick, isWatched, idx }) {
+export default function TradeRow({ trade, isHot, expanded, onToggleExpand, isWatched, idx }) {
   const isBuy = trade.transaction === "buy";
   const isSell = trade.transaction === "sell";
 
@@ -50,13 +50,10 @@ export default function TradeRow({ trade, isHot, expanded, onToggleExpand, onMem
           {trade.disclosure_date || "—"}
         </td>
         <td className="px-4 py-3">
-          <button
-            onClick={e => { e.stopPropagation(); onMemberClick(); }}
-            className="font-medium text-foreground hover:text-primary transition-colors text-left text-xs"
-          >
+          <span className="font-medium text-foreground text-xs">
             {trade.representative}
             {isWatched && <span className="ml-1.5 text-yellow-400">★</span>}
-          </button>
+          </span>
         </td>
         <td className="px-4 py-3 text-xs text-muted-foreground">{trade.chamber}</td>
         <td className="px-4 py-3 text-xs text-muted-foreground font-mono">{trade.state || "—"}</td>
