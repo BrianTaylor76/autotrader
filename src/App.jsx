@@ -15,31 +15,13 @@ import SignalConsole from './pages/SignalConsole';
 import Learn from './pages/Learn';
 import AppLayout from './components/layout/AppLayout';
 
-class ErrorBoundary extends React.Component {
-  constructor(props) { super(props); this.state = { error: null }; }
-  static getDerivedStateFromError(error) { return { error }; }
-  render() {
-    if (this.state.error) {
-      return (
-        <div style={{ padding: 32, color: '#ef4444', fontFamily: 'monospace', background: '#0d1117', minHeight: '100vh' }}>
-          <h2 style={{ marginBottom: 8 }}>App Error</h2>
-          <pre style={{ whiteSpace: 'pre-wrap', fontSize: 13 }}>{this.state.error?.message}</pre>
-          <pre style={{ whiteSpace: 'pre-wrap', fontSize: 11, color: '#888', marginTop: 8 }}>{this.state.error?.stack}</pre>
-          <button onClick={() => this.setState({ error: null })} style={{ marginTop: 16, padding: '6px 16px', cursor: 'pointer' }}>Retry</button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
 
   if (isLoadingPublicSettings || isLoadingAuth) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
+      <div className="fixed inset-0 flex items-center justify-center bg-background">
+        <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -72,17 +54,15 @@ const AuthenticatedApp = () => {
 
 function App() {
   return (
-    <ErrorBoundary>
-      <AuthProvider>
-        <QueryClientProvider client={queryClientInstance}>
-          <Router>
-            <AuthenticatedApp />
-          </Router>
-          <Toaster />
-        </QueryClientProvider>
-      </AuthProvider>
-    </ErrorBoundary>
-  )
+    <AuthProvider>
+      <QueryClientProvider client={queryClientInstance}>
+        <Router>
+          <AuthenticatedApp />
+        </Router>
+        <Toaster />
+      </QueryClientProvider>
+    </AuthProvider>
+  );
 }
 
-export default App
+export default App;
