@@ -62,10 +62,10 @@ export default function CongressWatch() {
     try { return JSON.parse(localStorage.getItem("watched_congress_members") || "[]"); } catch { return []; }
   });
 
-  // Fetch all trades — no limit so we get full history
+  // Fetch trades — 5000 is the practical SDK max
   const { data: trades = [], isLoading } = useQuery({
     queryKey: ["congress_trades"],
-    queryFn: () => base44.entities.CongressTrade.list("-disclosure_date", 10000),
+    queryFn: () => base44.entities.CongressTrade.list("-disclosure_date", 5000),
     staleTime: 300000,
   });
 
