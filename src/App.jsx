@@ -15,6 +15,7 @@ import Learn from './pages/Learn';
 import AppLayout from './components/layout/AppLayout';
 import { Navigate } from 'react-router-dom';
 
+
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
 
