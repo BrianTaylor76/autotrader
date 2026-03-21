@@ -4,7 +4,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { RefreshCw, Radio, TrendingUp, Users, BarChart2, MessageSquare, Clock, Brain } from "lucide-react";
+
+const BROAD_ETFS = new Set(['SPY', 'QQQ', 'DIA', 'IWM', 'VTI']);
 import { useToast } from "@/components/ui/use-toast";
 import { formatDistanceToNow } from "date-fns";
 import { AISignalCell, ShieldVerdict } from "@/components/signal/AISignalCell";
