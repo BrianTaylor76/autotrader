@@ -196,7 +196,7 @@ export default function SignalConsole() {
           Neutral
         </div>
         <span className="text-border">|</span>
-        <span>Score: 0–4 bullish signals · 2/4 minimum to trade</span>
+        <span>Score: 1/4 minimum to trade · ETFs use MA+Sentiment only (X/3)</span>
         {aiVetoEnabled && (
           <>
             <span className="text-border">|</span>
