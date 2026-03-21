@@ -310,8 +310,9 @@ export default function SignalConsole() {
                             <span className="text-xs text-muted-foreground">Never</span>
                           )}
                         </td>
-                      </tr>
-                    ))}
+                        </tr>
+                        );
+                        })}
                   </tbody>
                 </table>
               </div>
