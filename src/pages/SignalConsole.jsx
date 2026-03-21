@@ -5,12 +5,12 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { RefreshCw, Radio, TrendingUp, Users, BarChart2, MessageSquare, Clock, Brain } from "lucide-react";
-
-const BROAD_ETFS = new Set(['SPY', 'QQQ', 'DIA', 'IWM', 'VTI']);
 import { useToast } from "@/components/ui/use-toast";
 import { formatDistanceToNow } from "date-fns";
 import { AISignalCell, ShieldVerdict } from "@/components/signal/AISignalCell";
+import { RefreshCw, Radio, TrendingUp, Users, BarChart2, MessageSquare, Clock, Brain } from "lucide-react";
+
+const BROAD_ETFS = new Set(['SPY', 'QQQ', 'DIA', 'IWM', 'VTI']);
 
 const SIGNAL_COLS = [
   { key: "ma_signal", label: "MA Cross", icon: TrendingUp },
@@ -78,6 +78,23 @@ function RecommendationBadge({ rec }) {
   if (rec === "buy") return <Badge className="bg-primary/20 text-primary border-primary/30 text-xs">BUY</Badge>;
   if (rec === "sell") return <Badge className="bg-destructive/20 text-destructive border-destructive/30 text-xs">SELL</Badge>;
   return <Badge variant="secondary" className="text-xs text-muted-foreground">HOLD</Badge>;
+}
+
+function NACell() {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="flex items-center justify-center">
+            <span className="w-full text-center py-1.5 rounded-md text-xs font-semibold bg-muted/30 text-muted-foreground/40 border border-border/30 cursor-default">
+              N/A
+            </span>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent><p>Not applicable for broad market ETFs</p></TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
 }
 
 export default function SignalConsole() {
@@ -220,6 +237,7 @@ export default function SignalConsole() {
         </Card>
       ) : (
         <>
+          {/* Desktop table */}
           <div className="hidden md:block">
             <Card className="bg-card border-border overflow-hidden">
               <div className="overflow-x-auto">
@@ -253,122 +271,114 @@ export default function SignalConsole() {
                       const isETF = BROAD_ETFS.has(symbol.toUpperCase());
                       const maxScore = score?.max_score || (isETF ? 3 : 4);
                       return (
-                      <tr
-                        key={symbol}
-                        className={`border-b border-border/50 transition-colors hover:bg-accent/30 ${idx % 2 === 0 ? "" : "bg-secondary/20"}`}
-                      >
-                        <td className="px-5 py-4">
-                          <div className="flex flex-col gap-1">
-                            <span className="font-mono font-bold text-foreground text-sm">{symbol}</span>
-                            {isETF && <Badge className="text-[9px] px-1.5 py-0 bg-secondary text-muted-foreground border border-border w-fit">ETF Mode</Badge>}
-                          </div>
-                        </td>
-                        {SIGNAL_COLS.map((col) => {
-                          const isGrayedOut = isETF && (col.key === 'ark_signal' || col.key === 'congress_signal');
-                          return (
-                            <td key={col.key} className="px-4 py-3">
-                              {isGrayedOut ? (
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div className="flex items-center justify-center">
-                                        <span className="w-full text-center py-1.5 rounded-md text-xs font-semibold bg-muted/30 text-muted-foreground/40 border border-border/30 cursor-default">N/A</span>
-                                      </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent><p>Not applicable for broad market ETFs</p></TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              ) : score ? (
-                                <SignalCell value={score[col.key]} />
-                              ) : (
-                                <div className="text-center text-xs text-muted-foreground">—</div>
-                              )}
-                            </td>
-                          );
-                        })}
-                        {aiVetoEnabled && (
-                          <td className="px-4 py-3">
-                            <AISignalCell aiSignal={aiSignal} />
+                        <tr
+                          key={symbol}
+                          className={`border-b border-border/50 transition-colors hover:bg-accent/30 ${idx % 2 === 0 ? "" : "bg-secondary/20"}`}
+                        >
+                          <td className="px-5 py-4">
+                            <div className="flex flex-col gap-1">
+                              <span className="font-mono font-bold text-foreground text-sm">{symbol}</span>
+                              {isETF && <Badge className="text-[9px] px-1.5 py-0 bg-secondary text-muted-foreground border border-border w-fit">ETF Mode</Badge>}
+                            </div>
                           </td>
-                        )}
-                        <td className="px-5 py-3">
-                          {score ? (
-                            <ScoreBar score={score.total_score} maxScore={maxScore} aiVerdict={aiVetoEnabled ? aiSignal?.overall_verdict : null} />
-                          ) : (
-                            <div className="text-xs text-muted-foreground text-center">No data</div>
+                          {SIGNAL_COLS.map((col) => {
+                            const isGrayedOut = isETF && (col.key === 'ark_signal' || col.key === 'congress_signal');
+                            return (
+                              <td key={col.key} className="px-4 py-3">
+                                {isGrayedOut ? (
+                                  <NACell />
+                                ) : score ? (
+                                  <SignalCell value={score[col.key]} />
+                                ) : (
+                                  <div className="text-center text-xs text-muted-foreground">—</div>
+                                )}
+                              </td>
+                            );
+                          })}
+                          {aiVetoEnabled && (
+                            <td className="px-4 py-3">
+                              <AISignalCell aiSignal={aiSignal} />
+                            </td>
                           )}
-                        </td>
-                        <td className="px-5 py-3 text-center">
-                          {score ? <RecommendationBadge rec={score.recommendation} /> : <span className="text-xs text-muted-foreground">—</span>}
-                        </td>
-                        <td className="px-5 py-3 text-right">
-                          {score?.scored_at ? (
-                            <span className="text-xs text-muted-foreground font-mono">
-                              {formatDistanceToNow(new Date(score.scored_at), { addSuffix: true })}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">Never</span>
-                          )}
-                        </td>
+                          <td className="px-5 py-3">
+                            {score ? (
+                              <ScoreBar score={score.total_score} maxScore={maxScore} aiVerdict={aiVetoEnabled ? aiSignal?.overall_verdict : null} />
+                            ) : (
+                              <div className="text-xs text-muted-foreground text-center">No data</div>
+                            )}
+                          </td>
+                          <td className="px-5 py-3 text-center">
+                            {score ? <RecommendationBadge rec={score.recommendation} /> : <span className="text-xs text-muted-foreground">—</span>}
+                          </td>
+                          <td className="px-5 py-3 text-right">
+                            {score?.scored_at ? (
+                              <span className="text-xs text-muted-foreground font-mono">
+                                {formatDistanceToNow(new Date(score.scored_at), { addSuffix: true })}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Never</span>
+                            )}
+                          </td>
                         </tr>
-                        );
-                        })}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             </Card>
           </div>
 
+          {/* Mobile cards */}
           <div className="md:hidden space-y-3">
             {displayRows.map(({ symbol, score, aiSignal }) => {
               const isETF = BROAD_ETFS.has(symbol.toUpperCase());
               const maxScore = score?.max_score || (isETF ? 3 : 4);
               return (
-              <Card key={symbol} className="bg-card border-border p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono font-bold text-foreground">{symbol}</span>
-                    {isETF && <Badge className="text-[9px] px-1.5 py-0 bg-secondary text-muted-foreground border border-border">ETF Mode</Badge>}
-                  </div>
-                  {score ? <RecommendationBadge rec={score.recommendation} /> : <Badge variant="secondary" className="text-xs text-muted-foreground">No data</Badge>}
-                </div>
-                {score ? (
-                  <>
-                    <ScoreBar score={score.total_score} maxScore={maxScore} aiVerdict={aiVetoEnabled ? aiSignal?.overall_verdict : null} />
-                    <div className="grid grid-cols-2 gap-2">
-                      {SIGNAL_COLS.map((col) => {
-                        const isGrayedOut = isETF && (col.key === 'ark_signal' || col.key === 'congress_signal');
-                        return (
-                        <div key={col.key}>
-                          <p className="text-[10px] text-muted-foreground mb-1 flex items-center gap-1">
-                            <col.icon className="w-3 h-3" /> {col.label}
-                          </p>
-                          {isGrayedOut ? (
-                            <div className="text-center py-1.5 rounded-md text-xs font-semibold bg-muted/30 text-muted-foreground/40 border border-border/30">N/A</div>
-                          ) : (
-                            <SignalCell value={score[col.key]} />
-                          )}
-                        </div>
-                        );
-                      })}
+                <Card key={symbol} className="bg-card border-border p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-bold text-foreground">{symbol}</span>
+                      {isETF && <Badge className="text-[9px] px-1.5 py-0 bg-secondary text-muted-foreground border border-border">ETF Mode</Badge>}
                     </div>
-                    {aiVetoEnabled && aiSignal && (
-                      <div>
-                        <p className="text-[10px] text-muted-foreground mb-1 flex items-center gap-1">
-                          <Brain className="w-3 h-3" /> AI Analysis
-                        </p>
-                        <AISignalCell aiSignal={aiSignal} />
+                    {score ? <RecommendationBadge rec={score.recommendation} /> : <Badge variant="secondary" className="text-xs text-muted-foreground">No data</Badge>}
+                  </div>
+                  {score ? (
+                    <>
+                      <ScoreBar score={score.total_score} maxScore={maxScore} aiVerdict={aiVetoEnabled ? aiSignal?.overall_verdict : null} />
+                      <div className="grid grid-cols-2 gap-2">
+                        {SIGNAL_COLS.map((col) => {
+                          const isGrayedOut = isETF && (col.key === 'ark_signal' || col.key === 'congress_signal');
+                          return (
+                            <div key={col.key}>
+                              <p className="text-[10px] text-muted-foreground mb-1 flex items-center gap-1">
+                                <col.icon className="w-3 h-3" /> {col.label}
+                              </p>
+                              {isGrayedOut ? (
+                                <div className="text-center py-1.5 rounded-md text-xs font-semibold bg-muted/30 text-muted-foreground/40 border border-border/30">N/A</div>
+                              ) : (
+                                <SignalCell value={score[col.key]} />
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
-                    )}
-                    <p className="text-[10px] text-muted-foreground flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {formatDistanceToNow(new Date(score.scored_at), { addSuffix: true })}
-                    </p>
-                  </>
-                ) : (
-                  <p className="text-sm text-muted-foreground">Run "Refresh Signals" to score this symbol.</p>
-                )}
-              </Card>
+                      {aiVetoEnabled && aiSignal && (
+                        <div>
+                          <p className="text-[10px] text-muted-foreground mb-1 flex items-center gap-1">
+                            <Brain className="w-3 h-3" /> AI Analysis
+                          </p>
+                          <AISignalCell aiSignal={aiSignal} />
+                        </div>
+                      )}
+                      <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {formatDistanceToNow(new Date(score.scored_at), { addSuffix: true })}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Run "Refresh Signals" to score this symbol.</p>
+                  )}
+                </Card>
               );
             })}
           </div>
