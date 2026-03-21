@@ -120,7 +120,7 @@ export default function StrategySettings() {
         <div className="grid grid-cols-3 gap-2">
           {[
             { value: "simple", label: "Simple", desc: "MA Crossover only" },
-            { value: "consensus", label: "Consensus", desc: "4-signal, 2/4 threshold" },
+            { value: "consensus", label: "Consensus", desc: "Signal-weighted, 1/4 minimum" },
             { value: "both", label: "Both", desc: "Run both, split budget" },
           ].map((opt) => (
             <button
@@ -235,7 +235,7 @@ export default function StrategySettings() {
         </div>
         <div className="space-y-2">
           <Label className="text-xs text-muted-foreground uppercase tracking-wider">
-            Buy Threshold (min score out of 4)
+            Buy Threshold (min score) — 1/4 minimum
           </Label>
           <div className="flex items-center gap-3">
             <Input
@@ -257,7 +257,7 @@ export default function StrategySettings() {
           </div>
         </div>
         <p className="text-xs text-muted-foreground">
-          Buys require ≥ this many bullish signals (ARK, Congress, Sentiment, MA). 2/4 signals required. Sells require ≤ 2.
+          ETFs (SPY, QQQ) use MA Cross + Sentiment only. Individual stocks use all 4 signals. AI Guard vetoes any trade both AIs flag as high risk.
         </p>
       </Card>
 
