@@ -320,24 +320,37 @@ export default function SignalConsole() {
           </div>
 
           <div className="md:hidden space-y-3">
-            {displayRows.map(({ symbol, score, aiSignal }) => (
+            {displayRows.map(({ symbol, score, aiSignal }) => {
+              const isETF = BROAD_ETFS.has(symbol.toUpperCase());
+              const maxScore = score?.max_score || (isETF ? 3 : 4);
+              return (
               <Card key={symbol} className="bg-card border-border p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="font-mono font-bold text-foreground">{symbol}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-foreground">{symbol}</span>
+                    {isETF && <Badge className="text-[9px] px-1.5 py-0 bg-secondary text-muted-foreground border border-border">ETF Mode</Badge>}
+                  </div>
                   {score ? <RecommendationBadge rec={score.recommendation} /> : <Badge variant="secondary" className="text-xs text-muted-foreground">No data</Badge>}
                 </div>
                 {score ? (
                   <>
-                    <ScoreBar score={score.total_score} aiVerdict={aiVetoEnabled ? aiSignal?.overall_verdict : null} />
+                    <ScoreBar score={score.total_score} maxScore={maxScore} aiVerdict={aiVetoEnabled ? aiSignal?.overall_verdict : null} />
                     <div className="grid grid-cols-2 gap-2">
-                      {SIGNAL_COLS.map((col) => (
+                      {SIGNAL_COLS.map((col) => {
+                        const isGrayedOut = isETF && (col.key === 'ark_signal' || col.key === 'congress_signal');
+                        return (
                         <div key={col.key}>
                           <p className="text-[10px] text-muted-foreground mb-1 flex items-center gap-1">
                             <col.icon className="w-3 h-3" /> {col.label}
                           </p>
-                          <SignalCell value={score[col.key]} />
+                          {isGrayedOut ? (
+                            <div className="text-center py-1.5 rounded-md text-xs font-semibold bg-muted/30 text-muted-foreground/40 border border-border/30">N/A</div>
+                          ) : (
+                            <SignalCell value={score[col.key]} />
+                          )}
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                     {aiVetoEnabled && aiSignal && (
                       <div>
