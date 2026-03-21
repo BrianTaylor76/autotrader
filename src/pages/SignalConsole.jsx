@@ -369,7 +369,8 @@ export default function SignalConsole() {
                   <p className="text-sm text-muted-foreground">Run "Refresh Signals" to score this symbol.</p>
                 )}
               </Card>
-            ))}
+              );
+            })}
           </div>
         </>
       )}
