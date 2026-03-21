@@ -47,14 +47,15 @@ function SignalCell({ value }) {
   );
 }
 
-function ScoreBar({ score, aiVerdict }) {
+function ScoreBar({ score, maxScore = 4, aiVerdict }) {
   const colors = ["bg-destructive", "bg-destructive/70", "bg-yellow-500", "bg-primary/70", "bg-primary"];
-  const filled = colors[score] || "bg-muted";
+  const filled = colors[Math.min(score, colors.length - 1)] || "bg-muted";
+  const segments = maxScore === 3 ? [0, 1, 2] : [0, 1, 2, 3];
 
   return (
     <div className="flex items-center gap-2 w-full">
       <div className="flex gap-1 flex-1">
-        {[0, 1, 2, 3].map((i) => (
+        {segments.map((i) => (
           <div
             key={i}
             className={`h-2 flex-1 rounded-full transition-all ${i < score ? filled : "bg-secondary"}`}
@@ -62,10 +63,10 @@ function ScoreBar({ score, aiVerdict }) {
         ))}
       </div>
       <div className="flex items-center">
-        <span className={`text-sm font-bold font-mono tabular-nums w-6 text-right ${
-          score >= 2 ? "text-primary" : score === 1 ? "text-yellow-400" : "text-destructive"
+        <span className={`text-sm font-bold font-mono tabular-nums w-8 text-right ${
+          score >= 1 ? "text-primary" : "text-destructive"
         }`}>
-          {score}/4
+          {score}/{maxScore}
         </span>
         <ShieldVerdict verdict={aiVerdict} />
       </div>
