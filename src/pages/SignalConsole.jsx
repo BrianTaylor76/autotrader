@@ -249,19 +249,43 @@ export default function SignalConsole() {
                     </tr>
                   </thead>
                   <tbody>
-                    {displayRows.map(({ symbol, score, aiSignal }, idx) => (
+                    {displayRows.map(({ symbol, score, aiSignal }, idx) => {
+                      const isETF = BROAD_ETFS.has(symbol.toUpperCase());
+                      const maxScore = score?.max_score || (isETF ? 3 : 4);
+                      return (
                       <tr
                         key={symbol}
                         className={`border-b border-border/50 transition-colors hover:bg-accent/30 ${idx % 2 === 0 ? "" : "bg-secondary/20"}`}
                       >
                         <td className="px-5 py-4">
-                          <span className="font-mono font-bold text-foreground text-sm">{symbol}</span>
+                          <div className="flex flex-col gap-1">
+                            <span className="font-mono font-bold text-foreground text-sm">{symbol}</span>
+                            {isETF && <Badge className="text-[9px] px-1.5 py-0 bg-secondary text-muted-foreground border border-border w-fit">ETF Mode</Badge>}
+                          </div>
                         </td>
-                        {SIGNAL_COLS.map((col) => (
-                          <td key={col.key} className="px-4 py-3">
-                            {score ? <SignalCell value={score[col.key]} /> : <div className="text-center text-xs text-muted-foreground">—</div>}
-                          </td>
-                        ))}
+                        {SIGNAL_COLS.map((col) => {
+                          const isGrayedOut = isETF && (col.key === 'ark_signal' || col.key === 'congress_signal');
+                          return (
+                            <td key={col.key} className="px-4 py-3">
+                              {isGrayedOut ? (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className="flex items-center justify-center">
+                                        <span className="w-full text-center py-1.5 rounded-md text-xs font-semibold bg-muted/30 text-muted-foreground/40 border border-border/30 cursor-default">N/A</span>
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent><p>Not applicable for broad market ETFs</p></TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              ) : score ? (
+                                <SignalCell value={score[col.key]} />
+                              ) : (
+                                <div className="text-center text-xs text-muted-foreground">—</div>
+                              )}
+                            </td>
+                          );
+                        })}
                         {aiVetoEnabled && (
                           <td className="px-4 py-3">
                             <AISignalCell aiSignal={aiSignal} />
@@ -269,7 +293,7 @@ export default function SignalConsole() {
                         )}
                         <td className="px-5 py-3">
                           {score ? (
-                            <ScoreBar score={score.total_score} aiVerdict={aiVetoEnabled ? aiSignal?.overall_verdict : null} />
+                            <ScoreBar score={score.total_score} maxScore={maxScore} aiVerdict={aiVetoEnabled ? aiSignal?.overall_verdict : null} />
                           ) : (
                             <div className="text-xs text-muted-foreground text-center">No data</div>
                           )}
