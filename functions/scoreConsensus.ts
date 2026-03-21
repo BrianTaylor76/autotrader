@@ -9,12 +9,14 @@ const alpacaHeaders = {
   'APCA-API-SECRET-KEY': ALPACA_SECRET,
 };
 
+// Broad market ETFs — use ETF-mode scoring
+const BROAD_ETF_SET = new Set(['SPY', 'QQQ', 'DIA', 'IWM', 'VTI']);
+
 function calculateMA(prices, period) {
   if (prices.length < period) return null;
   return prices.slice(-period).reduce((a, b) => a + b, 0) / period;
 }
 
-// Use daily bars (always available, not market-hours dependent)
 async function fetchDailyBars(symbol, limit) {
   try {
     const url = `${ALPACA_DATA_URL}/v2/stocks/${symbol}/bars?timeframe=1Day&limit=${limit}&adjustment=raw&feed=iex`;
@@ -31,7 +33,9 @@ async function fetchDailyBars(symbol, limit) {
 }
 
 function scoreSymbol(symbol, prices, fast_ma, slow_ma, arkSymbolSet, congressSignals, sentimentSignals) {
-  // MA Signal using daily bars
+  const isETF = BROAD_ETF_SET.has(symbol.toUpperCase());
+
+  // MA Signal
   let ma_signal = 'neutral';
   if (prices.length >= slow_ma) {
     const currFast = calculateMA(prices, fast_ma);
@@ -42,10 +46,10 @@ function scoreSymbol(symbol, prices, fast_ma, slow_ma, arkSymbolSet, congressSig
     }
   }
 
-  // ARK Signal
+  // ARK Signal (0 points for ETFs)
   const ark_signal = arkSymbolSet.has(symbol.toUpperCase()) ? 'bullish' : 'neutral';
 
-  // Congress Signal
+  // Congress Signal (0 points for ETFs)
   const symCongress = congressSignals.filter(s => s.symbol.toUpperCase() === symbol.toUpperCase());
   let congress_signal = 'neutral';
   if (symCongress.length > 0) {
@@ -63,15 +67,29 @@ function scoreSymbol(symbol, prices, fast_ma, slow_ma, arkSymbolSet, congressSig
     else if (symSentiment.sentiment_score <= 0.4) sentiment_signal = 'bearish';
   }
 
-  const signals = [ma_signal, ark_signal, congress_signal, sentiment_signal];
-  const total_score = signals.filter(s => s === 'bullish').length;
-  const bearCount = signals.filter(s => s === 'bearish').length;
+  let total_score;
+  let max_score;
+
+  if (isETF) {
+    // ETF mode: MA counts as 2, Sentiment counts as 1, ARK/Congress = 0
+    const maPoints = ma_signal === 'bullish' ? 2 : 0;
+    const sentimentPoints = sentiment_signal === 'bullish' ? 1 : 0;
+    total_score = maPoints + sentimentPoints;
+    max_score = 3;
+  } else {
+    // Individual stock: all 4 signals equally weighted at 1 point each
+    const signals = [ma_signal, ark_signal, congress_signal, sentiment_signal];
+    total_score = signals.filter(s => s === 'bullish').length;
+    max_score = 4;
+  }
+
+  const bearCount = [ma_signal, ark_signal, congress_signal, sentiment_signal].filter(s => s === 'bearish').length;
 
   let recommendation = 'hold';
-  if (total_score >= 3) recommendation = 'buy';
+  if (total_score >= 1) recommendation = 'buy';
   else if (bearCount >= 3) recommendation = 'sell';
 
-  return { symbol, ma_signal, ark_signal, congress_signal, sentiment_signal, total_score, recommendation };
+  return { symbol, ma_signal, ark_signal, congress_signal, sentiment_signal, total_score, max_score, recommendation };
 }
 
 Deno.serve(async (req) => {
@@ -92,25 +110,20 @@ Deno.serve(async (req) => {
       return Response.json({ message: 'Watchlist is empty' });
     }
 
-    // Load all signals + price data fully in parallel
-    // Cap bar fetch to avoid timeouts — daily bars, short timeout per symbol
     const [arkSignals, congressSignals, sentimentSignals, existing, ...priceArrays] = await Promise.all([
       base44.asServiceRole.entities.ARKSignal.list('-created_date', 500),
       base44.asServiceRole.entities.CongressSignal.list('-created_date', 1000),
       base44.asServiceRole.entities.SentimentSignal.list('-created_date', 200),
       base44.asServiceRole.entities.ConsensusScore.list('-scored_at', 200),
-      // Use fewer bars to speed up — enough for MA calculation
       ...watchlist.map(sym => fetchDailyBars(sym, Math.min(slow_ma + 3, 30))),
     ]);
 
     const arkSymbolSet = new Set(arkSignals.map(s => s.symbol.toUpperCase()));
 
-    // Score all symbols (pure CPU, instant)
     const results = watchlist.map((symbol, idx) =>
       scoreSymbol(symbol, priceArrays[idx], fast_ma, slow_ma, arkSymbolSet, congressSignals, sentimentSignals)
     );
 
-    // Upsert all scores in parallel
     const existingBySymbol = Object.fromEntries(existing.map(e => [e.symbol.toUpperCase(), e]));
     await Promise.all(results.map(r => {
       const payload = { ...r, scored_at: new Date().toISOString() };
