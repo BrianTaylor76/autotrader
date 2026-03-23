@@ -13,6 +13,7 @@ import SignalConsole from '@/pages/SignalConsole';
 import Learn from '@/pages/Learn';
 import CongressWatch from '@/pages/CongressWatch';
 import Backtest from '@/pages/Backtest';
+import ManualMode from '@/pages/ManualMode';
 
 function App() {
   return (
@@ -30,6 +31,7 @@ function App() {
             <Route path="/Learn" element={<Learn />} />
             <Route path="/CongressWatch" element={<CongressWatch />} />
             <Route path="/Backtest" element={<Backtest />} />
+            <Route path="/ManualMode" element={<ManualMode />} />
           </Route>
         </Routes>
       </Router>
