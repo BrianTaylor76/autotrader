@@ -22,7 +22,7 @@ async function callClaude(prompt) {
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      model: "claude-opus-4-5",
+      model: "claude-sonnet-4-20250514",
       max_tokens: 1000,
       messages: [{ role: "user", content: prompt }],
     }),
@@ -52,24 +52,20 @@ async function callGPT(prompt) {
 
 Deno.serve(async (req) => {
   try {
-    const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
-
     const { symbol, company_name } = await req.json();
 
     const claudePrompt = `You are an expert stock analyst. Analyze ${symbol} (${company_name}) for a beginner retail investor with a small account under $1000. Cover: (1) what this company does and its current business health, (2) recent price action and what it signals technically, (3) current macroeconomic or world events affecting this stock right now, (4) your honest assessment of whether this is a reasonable stock for a small retail investor to consider right now and why. Be detailed but use plain language. Write 2-3 paragraphs. Do not use bullet points.`;
 
     const gptPrompt = `You are an expert stock analyst. Analyze ${symbol} (${company_name}) for a beginner retail investor with a small account under $1000. Cover: (1) recent fundamental and technical highlights, (2) how current market conditions and world events are impacting this stock, (3) your honest risk assessment and whether the reward justifies the risk for a small account right now. Be detailed but conversational. Write 2-3 paragraphs. Do not use bullet points.`;
 
-    // Run both AI calls simultaneously
+    // Run both simultaneously
     const [claudeResult, gptResult] = await Promise.allSettled([
       callClaude(claudePrompt),
       callGPT(gptPrompt),
     ]);
 
-    const claudeText = claudeResult.status === "fulfilled" ? claudeResult.value : `Error: ${claudeResult.reason?.message}`;
-    const gptText = gptResult.status === "fulfilled" ? gptResult.value : `Error: ${gptResult.reason?.message}`;
+    const claudeText = claudeResult.status === "fulfilled" ? claudeResult.value : `Analysis unavailable: ${claudeResult.reason?.message}`;
+    const gptText = gptResult.status === "fulfilled" ? gptResult.value : `Analysis unavailable: ${gptResult.reason?.message}`;
 
     const claudeSentiment = detectSentiment(claudeText);
     const gptSentiment = detectSentiment(gptText);
@@ -77,7 +73,6 @@ Deno.serve(async (req) => {
     const bearishCount = [claudeSentiment, gptSentiment].filter(s => s === "bearish").length;
     const consensus = bullishCount > bearishCount ? "bullish" : bearishCount > bullishCount ? "bearish" : "neutral";
 
-    // Generate comparison summary with Claude Haiku (cheap)
     let agreement_summary = "";
     let disagreement_summary = "";
     if (claudeResult.status === "fulfilled" && gptResult.status === "fulfilled") {

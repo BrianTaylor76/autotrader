@@ -4,10 +4,6 @@ const FINNHUB_KEY = Deno.env.get("FINNHUB_API_KEY");
 
 Deno.serve(async (req) => {
   try {
-    const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
-
     const { symbol } = await req.json();
     if (!symbol) return Response.json({ news: [] });
 
@@ -38,8 +34,8 @@ Deno.serve(async (req) => {
       console.error("Finnhub error:", e.message);
     }
 
-    // Yahoo Finance RSS
-    if (news.length < 10 && !symbol.includes("USD")) {
+    // Yahoo Finance RSS fallback
+    if (news.length < 5 && !symbol.includes("USD")) {
       try {
         const rssUrl = `https://feeds.finance.yahoo.com/rss/2.0/headline?s=${symbol}&region=US&lang=en-US`;
         const rssRes = await fetch(rssUrl);
@@ -60,7 +56,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Deduplicate and return top 10
     const seen = new Set();
     const unique = news.filter(n => {
       if (seen.has(n.headline)) return false;

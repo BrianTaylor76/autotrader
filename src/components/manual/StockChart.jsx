@@ -162,8 +162,8 @@ export default function StockChart({ symbol }) {
       )}
       <canvas
         ref={canvasRef}
-        width={700}
-        height={240}
+        width={canvasRef.current?.parentElement?.offsetWidth || 700}
+        height={280}
         className="w-full rounded-lg"
         style={{ imageRendering: "auto" }}
       />

@@ -12,7 +12,7 @@ async function alpacaGet(url) {
   const res = await fetch(url, { headers: HEADERS });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Alpaca ${res.status}: ${text.slice(0, 200)}`);
+    throw new Error(`Alpaca ${res.status}: ${text.slice(0, 300)}`);
   }
   return res.json();
 }
@@ -20,20 +20,15 @@ async function alpacaGet(url) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
-
     const body = await req.json();
     const { action, symbols, symbol, start, end } = body;
 
-    // ── TICKER BAR ─────────────────────────────────────────────────────────────
+    // ── TICKER BAR ──────────────────────────────────────────────────────────────
     if (action === "ticker_bar") {
       const stockSyms = ["SPY","QQQ","DIA","IWM"];
-      const cryptoSyms = ["BTCUSD","ETHUSD"];
-
       const results = {};
 
-      // Fetch stock snapshots
+      // Stock snapshots
       try {
         const data = await alpacaGet(
           `https://data.alpaca.markets/v2/stocks/snapshots?symbols=${stockSyms.join(",")}&feed=iex`
@@ -50,23 +45,49 @@ Deno.serve(async (req) => {
         console.error("Stock ticker error:", e.message);
       }
 
-      // Fetch crypto snapshots
+      // Crypto — try latest trades first, fall back to bars
       try {
-        const cryptoData = await alpacaGet(
-          `https://data.alpaca.markets/v1beta3/crypto/us/snapshots?symbols=${cryptoSyms.join(",")}`
+        const cryptoRes = await alpacaGet(
+          `https://data.alpaca.markets/v1beta3/crypto/us/latest/trades?symbols=BTCUSD,ETHUSD`
         );
-        for (const [sym, snap] of Object.entries(cryptoData.snapshots || {})) {
-          const prev = snap.prevDailyBar?.c || 0;
-          const cur = snap.dailyBar?.c || snap.latestTrade?.p || 0;
-          // Map BTCUSD -> BTC/USD for display
-          const displayKey = sym.replace("USD", "/USD").replace("//", "/");
-          results[displayKey] = {
-            price: snap.latestTrade?.p || cur,
-            change_pct: prev ? ((cur - prev) / prev) * 100 : 0,
-          };
+        const trades = cryptoRes.trades || {};
+        for (const [sym, trade] of Object.entries(trades)) {
+          results[sym] = { price: trade.p || 0, change_pct: 0 };
+        }
+        // Get daily bars for change_pct
+        try {
+          const today = new Date().toISOString().split("T")[0];
+          const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+          const barsData = await alpacaGet(
+            `https://data.alpaca.markets/v1beta3/crypto/us/bars?symbols=BTCUSD,ETHUSD&timeframe=1Day&start=${yesterday}&end=${today}&limit=2`
+          );
+          const bars = barsData.bars || {};
+          for (const [sym, symBars] of Object.entries(bars)) {
+            if (symBars.length >= 2) {
+              const prev = symBars[symBars.length - 2].c;
+              const cur = symBars[symBars.length - 1].c;
+              if (results[sym]) results[sym].change_pct = prev ? ((cur - prev) / prev) * 100 : 0;
+            }
+          }
+        } catch (e) {
+          console.error("Crypto change_pct error:", e.message);
         }
       } catch (e) {
-        console.error("Crypto ticker error:", e.message);
+        console.error("Crypto latest trades error:", e.message);
+        // Fallback: 1-min bars
+        try {
+          const fallback = await alpacaGet(
+            `https://data.alpaca.markets/v1beta3/crypto/us/bars?symbols=BTCUSD,ETHUSD&timeframe=1Min&limit=1`
+          );
+          const bars = fallback.bars || {};
+          for (const [sym, symBars] of Object.entries(bars)) {
+            if (symBars.length > 0) {
+              results[sym] = { price: symBars[symBars.length - 1].c, change_pct: 0 };
+            }
+          }
+        } catch (e2) {
+          console.error("Crypto fallback error:", e2.message);
+        }
       }
 
       return Response.json({ ticker: results });

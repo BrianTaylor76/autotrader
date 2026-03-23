@@ -7,8 +7,8 @@ const DISPLAY_SYMBOLS = [
   { key: "QQQ", label: "QQQ" },
   { key: "DIA", label: "DIA" },
   { key: "IWM", label: "IWM" },
-  { key: "BTC/USD", label: "BTC" },
-  { key: "ETH/USD", label: "ETH" },
+  { key: "BTCUSD", label: "BTC" },
+  { key: "ETHUSD", label: "ETH" },
 ];
 
 export default function TickerBar() {

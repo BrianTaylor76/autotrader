@@ -1,5 +1,5 @@
 export const SP500_SYMBOLS = [
-  "AAPL","MSFT","NVDA","GOOGL","AMZN","META","TSLA","BRK.B","JPM","V",
+  "AAPL","MSFT","NVDA","GOOGL","AMZN","META","TSLA","BRK/B","JPM","V",
   "UNH","XOM","JNJ","WMT","MA","PG","HD","CVX","MRK","ABBV",
   "PEP","KO","AVGO","COST","TMO","ACN","MCD","BAC","NFLX","LLY",
   "CSCO","ABT","DHR","TXN","NEE","PM","RTX","HON","LOW","UPS",
