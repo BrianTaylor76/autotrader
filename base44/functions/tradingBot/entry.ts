@@ -5,6 +5,14 @@ const ALPACA_DATA_URL = 'https://data.alpaca.markets';
 
 const PUSHOVER_USER_KEY = Deno.env.get('PUSHOVER_USER_KEY');
 const PUSHOVER_APP_TOKEN = Deno.env.get('PUSHOVER_APP_TOKEN');
+const ALPACA_KEY = Deno.env.get('ALPACA_API_KEY');
+const ALPACA_SECRET = Deno.env.get('ALPACA_API_SECRET');
+
+const alpacaHeaders = {
+  'APCA-API-KEY-ID': ALPACA_KEY,
+  'APCA-API-SECRET-KEY': ALPACA_SECRET,
+  'Content-Type': 'application/json',
+};
 
 async function sendPush(base44, { title, message, priority = 0, sound = 'pushover', trigger_type, symbol, value }) {
   const delivered_at = new Date().toISOString();
@@ -31,15 +39,6 @@ async function sendPush(base44, { title, message, priority = 0, sound = 'pushove
   }
 }
 
-const ALPACA_KEY = Deno.env.get('ALPACA_API_KEY');
-const ALPACA_SECRET = Deno.env.get('ALPACA_API_SECRET');
-
-const alpacaHeaders = {
-  'APCA-API-KEY-ID': ALPACA_KEY,
-  'APCA-API-SECRET-KEY': ALPACA_SECRET,
-  'Content-Type': 'application/json',
-};
-
 async function isMarketOpen() {
   const res = await fetch(`${ALPACA_BASE_URL}/v2/clock`, { headers: alpacaHeaders });
   if (!res.ok) return false;
@@ -56,10 +55,7 @@ function calculateMA(prices, period) {
 async function fetchBars(symbol, limit) {
   const url = `${ALPACA_DATA_URL}/v2/stocks/${symbol}/bars?timeframe=5Min&limit=${limit}&feed=iex`;
   const res = await fetch(url, { headers: alpacaHeaders });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Failed to fetch bars for ${symbol}: ${err}`);
-  }
+  if (!res.ok) throw new Error(`Failed to fetch bars for ${symbol}: ${await res.text()}`);
   const data = await res.json();
   return (data.bars || []).map((b) => b.c);
 }
@@ -73,25 +69,16 @@ async function getPositions() {
 
 async function placeOrder(symbol, side, qty) {
   const body = JSON.stringify({ symbol, qty, side, type: 'market', time_in_force: 'day' });
-  const res = await fetch(`${ALPACA_BASE_URL}/v2/orders`, {
-    method: 'POST',
-    headers: alpacaHeaders,
-    body,
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Order failed for ${symbol} ${side}: ${err}`);
-  }
+  const res = await fetch(`${ALPACA_BASE_URL}/v2/orders`, { method: 'POST', headers: alpacaHeaders, body });
+  if (!res.ok) throw new Error(`Order failed for ${symbol} ${side}: ${await res.text()}`);
   return await res.json();
 }
 
-// Returns true if the AI veto should BLOCK this buy
 function isAIVetoed(aiSignal, aiVetoEnabled) {
   if (!aiVetoEnabled || !aiSignal) return false;
   return aiSignal.overall_verdict === 'block';
 }
 
-// Simple MA crossover strategy gated by consensus score for BUY
 async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, strategyTag, consensusScore, consensus_threshold, aiSignal, aiVetoEnabled) {
   const prevPrices = prices.slice(0, -1);
   const currFastMA = calculateMA(prices, fast_ma_period);
@@ -108,25 +95,19 @@ async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma
   const hasPosition = existingPosition && parseFloat(existingPosition.qty) > 0;
   const goldenCross = prevFastMA <= prevSlowMA && currFastMA > currSlowMA;
   const deathCross = prevFastMA >= prevSlowMA && currFastMA < currSlowMA;
-
   const scoreLabel = consensusScore !== null ? `consensus ${consensusScore}/4` : 'no consensus data';
 
   if (goldenCross && !hasPosition) {
-    // Gate BUY on consensus score
     if (consensusScore !== null && consensusScore < consensus_threshold) {
       return { symbol, action: 'hold', message: `Golden cross but ${scoreLabel} below threshold (${consensus_threshold})`, strategy: strategyTag };
     }
-    // Gate BUY on AI veto
     if (isAIVetoed(aiSignal, aiVetoEnabled)) {
       await sendPush(base44, {
         title: 'AutoTrader: Trade Blocked 🛡️',
         message: `AI Guard blocked ${symbol} buy. Claude: ${aiSignal.claude_reasoning || 'N/A'}. GPT: ${aiSignal.gpt_reasoning || 'N/A'}`,
         priority: 0, sound: 'pushover', trigger_type: 'ai_veto_blocked', symbol,
       });
-      return {
-        symbol, action: 'hold', strategy: strategyTag,
-        message: `AI veto: ${aiSignal.claude_reasoning} / GPT: ${aiSignal.gpt_reasoning}`,
-      };
+      return { symbol, action: 'hold', strategy: strategyTag, message: `AI veto blocked` };
     }
     const qty = Math.floor(max_per_trade / latestPrice);
     if (qty < 1) return { symbol, message: 'Price too high for max_per_trade limit' };
@@ -137,7 +118,7 @@ async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma
       await base44.asServiceRole.entities.Trade.create({
         symbol, action: 'buy', quantity: qty, price: latestPrice, total_value: totalValue,
         status: 'executed', strategy: strategyTag,
-        reason: `[${strategyTag}] Golden cross: fast MA (${currFastMA.toFixed(2)}) crossed above slow MA (${currSlowMA.toFixed(2)}) | ${scoreLabel}${aiNote}`,
+        reason: `[${strategyTag}] Golden cross | ${scoreLabel}${aiNote}`,
         executed_at: new Date().toISOString(),
       });
       await base44.asServiceRole.entities.Position.create({
@@ -158,7 +139,6 @@ async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma
       return { symbol, error: e.message };
     }
   } else if (deathCross && hasPosition) {
-    // SELLS are NOT blocked by AI veto
     if (consensusScore !== null && consensusScore > 2) {
       return { symbol, action: 'hold', message: `Death cross but ${scoreLabel} still above 2 — holding`, strategy: strategyTag };
     }
@@ -171,13 +151,11 @@ async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma
       await base44.asServiceRole.entities.Trade.create({
         symbol, action: 'sell', quantity: qty, price: latestPrice, total_value: totalValue,
         result: tradeResult, status: 'executed', strategy: strategyTag,
-        reason: `[${strategyTag}] Death cross: fast MA (${currFastMA.toFixed(2)}) crossed below slow MA (${currSlowMA.toFixed(2)}) | ${scoreLabel}`,
+        reason: `[${strategyTag}] Death cross | ${scoreLabel}`,
         executed_at: new Date().toISOString(),
       });
       const positionRecords = await base44.asServiceRole.entities.Position.filter({ symbol });
-      for (const pr of positionRecords) {
-        await base44.asServiceRole.entities.Position.delete(pr.id);
-      }
+      for (const pr of positionRecords) await base44.asServiceRole.entities.Position.delete(pr.id);
       await sendPush(base44, {
         title: `AutoTrader: SELL Executed`,
         message: `${qty} shares of ${symbol} sold at $${latestPrice.toFixed(2)}. Total: $${totalValue.toFixed(2)}. Strategy: ${strategyTag}`,
@@ -208,7 +186,6 @@ async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma
   }
 }
 
-// Consensus strategy: requires total_score >= threshold to BUY, <= 1 to SELL
 async function runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, strategyTag, consensusScore, consensus_threshold, aiSignal, aiVetoEnabled) {
   const prevPrices = prices.slice(0, -1);
   const currFastMA = calculateMA(prices, fast_ma_period);
@@ -225,22 +202,17 @@ async function runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow
   const hasPosition = existingPosition && parseFloat(existingPosition.qty) > 0;
   const goldenCross = prevFastMA <= prevSlowMA && currFastMA > currSlowMA;
   const deathCross = prevFastMA >= prevSlowMA && currFastMA < currSlowMA;
-
   const score = consensusScore ?? 0;
   const scoreLabel = `consensus ${score}/4`;
 
   if (goldenCross && !hasPosition && score >= consensus_threshold) {
-    // Gate BUY on AI veto
     if (isAIVetoed(aiSignal, aiVetoEnabled)) {
       await sendPush(base44, {
         title: 'AutoTrader: Trade Blocked 🛡️',
         message: `AI Guard blocked ${symbol} buy. Claude: ${aiSignal.claude_reasoning || 'N/A'}. GPT: ${aiSignal.gpt_reasoning || 'N/A'}`,
         priority: 0, sound: 'pushover', trigger_type: 'ai_veto_blocked', symbol,
       });
-      return {
-        symbol, action: 'hold', strategy: strategyTag,
-        message: `AI veto: ${aiSignal.claude_reasoning} / GPT: ${aiSignal.gpt_reasoning}`,
-      };
+      return { symbol, action: 'hold', strategy: strategyTag, message: `AI veto blocked` };
     }
     const qty = Math.floor(max_per_trade / latestPrice);
     if (qty < 1) return { symbol, message: 'Price too high for max_per_trade limit' };
@@ -251,7 +223,7 @@ async function runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow
       await base44.asServiceRole.entities.Trade.create({
         symbol, action: 'buy', quantity: qty, price: latestPrice, total_value: totalValue,
         status: 'executed', strategy: strategyTag,
-        reason: `[${strategyTag}] Golden cross confirmed by ${scoreLabel} (threshold: ${consensus_threshold})${aiNote}`,
+        reason: `[${strategyTag}] Golden cross confirmed by ${scoreLabel}${aiNote}`,
         executed_at: new Date().toISOString(),
       });
       await base44.asServiceRole.entities.Position.create({
@@ -272,7 +244,6 @@ async function runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow
       return { symbol, error: e.message };
     }
   } else if (deathCross && hasPosition && score <= 2) {
-    // SELLS are NOT blocked by AI veto
     const qty = parseFloat(existingPosition.qty);
     const avgEntry = parseFloat(existingPosition.avg_entry_price);
     try {
@@ -282,13 +253,11 @@ async function runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow
       await base44.asServiceRole.entities.Trade.create({
         symbol, action: 'sell', quantity: qty, price: latestPrice, total_value: totalValue,
         result: tradeResult, status: 'executed', strategy: strategyTag,
-        reason: `[${strategyTag}] Death cross confirmed by ${scoreLabel} (sell threshold: ≤2)`,
+        reason: `[${strategyTag}] Death cross confirmed by ${scoreLabel}`,
         executed_at: new Date().toISOString(),
       });
       const positionRecords = await base44.asServiceRole.entities.Position.filter({ symbol });
-      for (const pr of positionRecords) {
-        await base44.asServiceRole.entities.Position.delete(pr.id);
-      }
+      for (const pr of positionRecords) await base44.asServiceRole.entities.Position.delete(pr.id);
       await sendPush(base44, {
         title: `AutoTrader: SELL Executed`,
         message: `${qty} shares of ${symbol} sold at $${latestPrice.toFixed(2)}. Total: $${totalValue.toFixed(2)}. Strategy: ${strategyTag}`,
@@ -310,10 +279,6 @@ async function runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user || user.role !== 'admin') {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
 
     if (!await isMarketOpen()) {
       return Response.json({ message: 'Market is not open, skipping.', ran_at: new Date().toISOString() });
@@ -338,7 +303,6 @@ Deno.serve(async (req) => {
 
     if (watchlist.length === 0) return Response.json({ message: 'Watchlist is empty.' });
 
-    // Check daily loss limit
     const today = new Date().toISOString().split('T')[0];
     const allTodayTrades = await base44.asServiceRole.entities.Trade.list('-executed_at', 200);
     const todayTrades = allTodayTrades.filter((t) => t.executed_at && t.executed_at.startsWith(today));
@@ -350,13 +314,9 @@ Deno.serve(async (req) => {
         message: `Bot stopped for today. Total loss: $${Math.abs(dailyLoss).toFixed(2)} exceeded limit of $${daily_loss_limit}`,
         priority: 1, sound: 'siren', trigger_type: 'daily_loss_limit', value: String(dailyLoss.toFixed(2)),
       });
-      return Response.json({
-        message: `Daily loss limit of $${daily_loss_limit} hit. Bot stopped for today.`,
-        daily_loss: dailyLoss,
-      });
+      return Response.json({ message: `Daily loss limit of $${daily_loss_limit} hit.`, daily_loss: dailyLoss });
     }
 
-    // Load latest ConsensusScores and AISignals in parallel
     const [allScores, allAISignals] = await Promise.all([
       base44.asServiceRole.entities.ConsensusScore.list('-scored_at', 200),
       base44.asServiceRole.entities.AISignal.list('-analyzed_at', 200),
@@ -366,7 +326,6 @@ Deno.serve(async (req) => {
     for (const cs of allScores) {
       if (!consensusMap[cs.symbol]) consensusMap[cs.symbol] = cs;
     }
-
     const aiSignalMap = {};
     for (const ai of allAISignals) {
       if (!aiSignalMap[ai.symbol]) aiSignalMap[ai.symbol] = ai;
@@ -394,16 +353,13 @@ Deno.serve(async (req) => {
       const aiSignal = aiSignalMap[symbol] || aiSignalMap[symbol?.toUpperCase()] || null;
 
       if (strategy_mode === 'simple') {
-        const r = await runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, 'Simple', csScore, consensus_threshold, aiSignal, ai_veto_enabled);
-        results.push(r);
+        results.push(await runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, 'Simple', csScore, consensus_threshold, aiSignal, ai_veto_enabled));
       } else if (strategy_mode === 'consensus') {
-        const r = await runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, 'Consensus', csScore, consensus_threshold, aiSignal, ai_veto_enabled);
-        results.push(r);
+        results.push(await runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, max_per_trade, openPositions, 'Consensus', csScore, consensus_threshold, aiSignal, ai_veto_enabled));
       } else if (strategy_mode === 'both') {
         const halfBudget = max_per_trade / 2;
-        const rSimple = await runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, halfBudget, openPositions, 'Simple', csScore, consensus_threshold, aiSignal, ai_veto_enabled);
-        const rConsensus = await runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, halfBudget, openPositions, 'Consensus', csScore, consensus_threshold, aiSignal, ai_veto_enabled);
-        results.push(rSimple, rConsensus);
+        results.push(await runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, halfBudget, openPositions, 'Simple', csScore, consensus_threshold, aiSignal, ai_veto_enabled));
+        results.push(await runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow_ma_period, halfBudget, openPositions, 'Consensus', csScore, consensus_threshold, aiSignal, ai_veto_enabled));
       }
     }
 

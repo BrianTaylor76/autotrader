@@ -1,8 +1,12 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.21';
 
 const ARK_CSV_URL = 'https://ark-funds.com/wp-content/uploads/funds-etf-csv/ARK_INNOVATION_ETF_ARKK_HOLDINGS.csv';
+const ARK_CSV_URL_ALT = 'https://ark-funds.com/wp-content/uploads/funds-etf-csv/ARK_INNOVATION_ETF_ARKK_HOLDINGS.csv';
 
-const ARKK_FALLBACK = ['TSLA', 'NVDA', 'ROKU', 'COIN', 'SQ', 'ZOOM', 'SPOT', 'CRISPR', 'TDOC', 'PATH'];
+const ARKK_FALLBACK = [
+  'TSLA', 'NVDA', 'ROKU', 'COIN', 'SQ', 'ZOOM', 'SPOT', 'CRISPR', 'TDOC', 'PATH',
+  'EXAS', 'BEAM', 'PACB', 'TWLO', 'ZM', 'SHOP', 'DKNG', 'RBLX', 'U', 'HOOD'
+];
 
 function parseCSV(text) {
   const lines = text.trim().split('\n');
@@ -18,28 +22,37 @@ function parseCSV(text) {
   return results;
 }
 
+async function tryFetchCSV(url) {
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'text/csv,text/plain,*/*' },
+    signal: AbortSignal.timeout(12000),
+  }).catch(() => null);
+  if (!res?.ok) return null;
+  const text = await res.text().catch(() => '');
+  return text;
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user || user.role !== 'admin') {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
     const today = new Date().toISOString().split('T')[0];
     let records = [];
-    let source = 'csv';
+    let source = 'fallback';
 
-    // Try fetching the CSV
-    const res = await fetch(ARK_CSV_URL, {
-      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'text/csv,text/plain,*/*' },
-      signal: AbortSignal.timeout(12000),
-    }).catch(() => null);
+    // Try primary CSV URL
+    let csvText = await tryFetchCSV(ARK_CSV_URL);
 
-    if (res?.ok) {
-      const text = await res.text().catch(() => '');
-      const rows = parseCSV(text);
-      records = rows
+    // Try alternate URL if primary failed
+    if (!csvText && ARK_CSV_URL_ALT !== ARK_CSV_URL) {
+      csvText = await tryFetchCSV(ARK_CSV_URL_ALT);
+      if (csvText) source = 'csv_alt';
+    } else if (csvText) {
+      source = 'csv';
+    }
+
+    if (csvText) {
+      const rows = parseCSV(csvText);
+      const parsed = rows
         .filter(r => {
           const ticker = r.ticker || r.symbol || r['ticker symbol'] || '';
           return ticker && ticker.trim().length > 0 && ticker !== '-' && ticker.toUpperCase() !== 'N/A';
@@ -50,19 +63,25 @@ Deno.serve(async (req) => {
           return { symbol: ticker, weight, date: r.date || today };
         })
         .filter(r => r.symbol.length > 0 && r.symbol.length <= 10);
+
+      if (parsed.length > 0) {
+        records = parsed;
+      } else {
+        source = 'fallback';
+      }
     }
 
-    // Fall back to hardcoded top 10 if CSV failed or returned nothing
+    // Fallback to hardcoded top 20
     if (records.length === 0) {
       source = 'fallback';
       records = ARKK_FALLBACK.map((symbol, i) => ({
         symbol,
-        weight: parseFloat(((10 - i) * 1.5).toFixed(2)),
+        weight: parseFloat(((20 - i) * 0.75).toFixed(2)),
         date: today,
       }));
     }
 
-    // Upsert: load existing, update or create
+    // Upsert
     const existing = await base44.asServiceRole.entities.ARKSignal.list('-created_date', 500);
     const existingBySymbol = Object.fromEntries(existing.map(e => [e.symbol.toUpperCase(), e]));
 

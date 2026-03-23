@@ -9,7 +9,6 @@ const alpacaHeaders = {
   'APCA-API-SECRET-KEY': ALPACA_SECRET,
 };
 
-// Broad market ETFs — use ETF-mode scoring
 const BROAD_ETF_SET = new Set(['SPY', 'QQQ', 'DIA', 'IWM', 'VTI']);
 
 function calculateMA(prices, period) {
@@ -35,7 +34,6 @@ async function fetchDailyBars(symbol, limit) {
 function scoreSymbol(symbol, prices, fast_ma, slow_ma, arkSymbolSet, congressSignals, sentimentSignals) {
   const isETF = BROAD_ETF_SET.has(symbol.toUpperCase());
 
-  // MA Signal
   let ma_signal = 'neutral';
   if (prices.length >= slow_ma) {
     const currFast = calculateMA(prices, fast_ma);
@@ -46,10 +44,8 @@ function scoreSymbol(symbol, prices, fast_ma, slow_ma, arkSymbolSet, congressSig
     }
   }
 
-  // ARK Signal (0 points for ETFs)
   const ark_signal = arkSymbolSet.has(symbol.toUpperCase()) ? 'bullish' : 'neutral';
 
-  // Congress Signal (0 points for ETFs)
   const symCongress = congressSignals.filter(s => s.symbol.toUpperCase() === symbol.toUpperCase());
   let congress_signal = 'neutral';
   if (symCongress.length > 0) {
@@ -59,7 +55,6 @@ function scoreSymbol(symbol, prices, fast_ma, slow_ma, arkSymbolSet, congressSig
     else if (sales > purchases) congress_signal = 'bearish';
   }
 
-  // Sentiment Signal
   const symSentiment = sentimentSignals.find(s => s.symbol.toUpperCase() === symbol.toUpperCase());
   let sentiment_signal = 'neutral';
   if (symSentiment) {
@@ -67,24 +62,19 @@ function scoreSymbol(symbol, prices, fast_ma, slow_ma, arkSymbolSet, congressSig
     else if (symSentiment.sentiment_score <= 0.4) sentiment_signal = 'bearish';
   }
 
-  let total_score;
-  let max_score;
-
+  let total_score, max_score;
   if (isETF) {
-    // ETF mode: MA counts as 2, Sentiment counts as 1, ARK/Congress = 0
     const maPoints = ma_signal === 'bullish' ? 2 : 0;
     const sentimentPoints = sentiment_signal === 'bullish' ? 1 : 0;
     total_score = maPoints + sentimentPoints;
     max_score = 3;
   } else {
-    // Individual stock: all 4 signals equally weighted at 1 point each
     const signals = [ma_signal, ark_signal, congress_signal, sentiment_signal];
     total_score = signals.filter(s => s === 'bullish').length;
     max_score = 4;
   }
 
   const bearCount = [ma_signal, ark_signal, congress_signal, sentiment_signal].filter(s => s === 'bearish').length;
-
   let recommendation = 'hold';
   if (total_score >= 1) recommendation = 'buy';
   else if (bearCount >= 3) recommendation = 'sell';
@@ -95,10 +85,6 @@ function scoreSymbol(symbol, prices, fast_ma, slow_ma, arkSymbolSet, congressSig
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user || user.role !== 'admin') {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
 
     const settingsList = await base44.asServiceRole.entities.StrategySettings.list('-created_date', 1);
     const settings = settingsList[0];

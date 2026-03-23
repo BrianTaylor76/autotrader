@@ -25,8 +25,8 @@ async function fetchAllBars(symbol, startDate, endDate) {
   do {
     const params = new URLSearchParams({
       timeframe: "1Day",
-      start: startDate,
-      end: endDate,
+      start: new Date(startDate).toISOString(),
+      end: new Date(endDate).toISOString(),
       limit: "1000",
       feed: "iex",
     });
@@ -71,19 +71,16 @@ function simulateStrategy(bars, fastPeriod, slowPeriod, initialCapital, strategy
     const fastAboveSlow = fastMA > slowMA;
     const portfolioValue = cash + shares * closes[i];
 
-    // Peak/drawdown tracking
     if (portfolioValue > peakValue) peakValue = portfolioValue;
     const drawdown = (peakValue - portfolioValue) / peakValue * 100;
     if (drawdown > maxDrawdown) maxDrawdown = drawdown;
 
-    // Detect crossover
     if (prevFastAboveSlow !== null && fastAboveSlow !== prevFastAboveSlow) {
       const isGoldenCross = fastAboveSlow;
       const covid = isCovidPeriod(dates[i]);
-      const covidNote = covid ? " ⚠️ COVID-19 market crash — extreme volatility, results during this period are not representative of normal market conditions" : "";
+      const covidNote = covid ? " ⚠️ COVID-19 market crash — extreme volatility" : "";
 
       if (isGoldenCross && cash > 0) {
-        // BUY signal
         let shouldBuy = true;
         let reason = `Golden cross: fast MA (${fastMA.toFixed(2)}) crossed above slow MA (${slowMA.toFixed(2)})`;
 
@@ -124,13 +121,10 @@ function simulateStrategy(bars, fastPeriod, slowPeriod, initialCapital, strategy
           }
         }
       } else if (!isGoldenCross && shares > 0) {
-        // SELL signal
         const value = shares * closes[i];
         const resultDollars = (closes[i] - entryPrice) * shares;
         const resultPct = (closes[i] - entryPrice) / entryPrice * 100;
         cash += value;
-        const covid = isCovidPeriod(dates[i]);
-        const covidNote = covid ? " ⚠️ COVID-19 market crash — extreme volatility, results during this period are not representative of normal market conditions" : "";
         trades.push({
           strategy: strategyType,
           symbol: bars[0]?.S || "?",
@@ -145,7 +139,7 @@ function simulateStrategy(bars, fastPeriod, slowPeriod, initialCapital, strategy
           ma_fast: fastMA,
           ma_slow: slowMA,
           signal_reason: `Death cross: fast MA (${fastMA.toFixed(2)}) crossed below slow MA (${slowMA.toFixed(2)})` + covidNote,
-          is_covid_period: covid,
+          is_covid_period: isCovidPeriod(dates[i]),
         });
         shares = 0;
         entryPrice = 0;
@@ -156,7 +150,6 @@ function simulateStrategy(bars, fastPeriod, slowPeriod, initialCapital, strategy
     dailyValues.push({ date: dates[i], value: cash + shares * closes[i] });
   }
 
-  // Liquidate at end if holding
   if (shares > 0) {
     const lastClose = closes[closes.length - 1];
     const lastDate = dates[dates.length - 1];
@@ -184,8 +177,6 @@ function simulateStrategy(bars, fastPeriod, slowPeriod, initialCapital, strategy
   }
 
   const finalValue = cash;
-
-  // Compute sell-only stats
   const sellTrades = trades.filter(t => t.action === "sell" && t.result_dollars !== null);
   const winning = sellTrades.filter(t => t.result_dollars > 0);
   const losing = sellTrades.filter(t => t.result_dollars <= 0);
@@ -193,7 +184,6 @@ function simulateStrategy(bars, fastPeriod, slowPeriod, initialCapital, strategy
   const avgGain = winning.length > 0 ? winning.reduce((s, t) => s + t.result_pct, 0) / winning.length : 0;
   const avgLoss = losing.length > 0 ? losing.reduce((s, t) => s + t.result_pct, 0) / losing.length : 0;
 
-  // Sharpe ratio from daily returns
   const vals = dailyValues.map(d => d.value);
   const dailyReturns = [];
   for (let i = 1; i < vals.length; i++) {
@@ -231,9 +221,6 @@ function simulateStrategy(bars, fastPeriod, slowPeriod, initialCapital, strategy
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
-
     const { symbol, start_date, end_date, fast_ma, slow_ma, initial_capital, strategies } = await req.json();
 
     if (!symbol || !start_date || !end_date) {
@@ -245,9 +232,8 @@ Deno.serve(async (req) => {
     const capital = initial_capital || 10000;
     const stratList = strategies || ["simple", "consensus"];
 
-    // Create run record
     const runId = crypto.randomUUID();
-    const run = await base44.entities.BacktestRun.create({
+    const run = await base44.asServiceRole.entities.BacktestRun.create({
       run_id: runId,
       strategy: stratList.length === 2 ? "both" : stratList[0],
       symbol: symbol.toUpperCase(),
@@ -260,41 +246,35 @@ Deno.serve(async (req) => {
       created_at: new Date().toISOString(),
     });
 
-    // Fetch bars - need extra history for 200-day MA
+    // Extend start by 1 year for MA warmup
     const extendedStart = new Date(start_date);
     extendedStart.setFullYear(extendedStart.getFullYear() - 1);
-    const bars = await fetchAllBars(symbol.toUpperCase(), extendedStart.toISOString().split("T")[0], end_date);
+    const bars = await fetchAllBars(symbol.toUpperCase(), extendedStart.toISOString(), end_date);
 
     if (bars.length < slowPeriod + 5) {
-      await base44.entities.BacktestRun.update(run.id, { status: "failed", error_message: "Not enough historical data" });
+      await base44.asServiceRole.entities.BacktestRun.update(run.id, { status: "failed", error_message: "Not enough historical data" });
       return Response.json({ error: "Not enough historical data" }, { status: 400 });
     }
-
-    // Filter bars to requested range for results (but use full for MA calc)
-    const startDateObj = new Date(start_date);
-    const barsFiltered = bars; // use all for MA warmup
 
     let simpleResult = null;
     let consensusResult = null;
     const allTrades = [];
 
     if (stratList.includes("simple")) {
-      simpleResult = simulateStrategy(barsFiltered, fastPeriod, slowPeriod, capital, "simple");
+      simpleResult = simulateStrategy(bars, fastPeriod, slowPeriod, capital, "simple");
       allTrades.push(...simpleResult.trades.map(t => ({ ...t, run_id: run.id })));
     }
 
     if (stratList.includes("consensus")) {
-      consensusResult = simulateStrategy(barsFiltered, fastPeriod, slowPeriod, capital, "consensus");
+      consensusResult = simulateStrategy(bars, fastPeriod, slowPeriod, capital, "consensus");
       allTrades.push(...consensusResult.trades.map(t => ({ ...t, run_id: run.id })));
     }
 
-    // Save trades in batches
     const BATCH = 50;
     for (let i = 0; i < allTrades.length; i += BATCH) {
-      await base44.entities.BacktestTrade.bulkCreate(allTrades.slice(i, i + BATCH));
+      await base44.asServiceRole.entities.BacktestTrade.bulkCreate(allTrades.slice(i, i + BATCH));
     }
 
-    // Update run with stats
     const updatePayload = { status: "complete" };
     if (simpleResult) {
       const s = simpleResult.stats;
@@ -329,7 +309,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    await base44.entities.BacktestRun.update(run.id, updatePayload);
+    await base44.asServiceRole.entities.BacktestRun.update(run.id, updatePayload);
 
     return Response.json({
       run_id: run.id,

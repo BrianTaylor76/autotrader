@@ -32,21 +32,20 @@ const HOUSE_URL = 'https://housestockwatcher.com/api/transactions_json';
 const SENATE_URL = 'https://senatestockwatcher.com/api/transactions_json';
 
 const TRANSACTION_MAP = {
-  'purchase': 'Purchase',
-  'buy': 'Purchase',
-  'sale_full': 'Sale (Full)',
-  'sale_partial': 'Sale (Partial)',
-  'sale': 'Sale',
-  'sell': 'Sale',
+  'purchase': 'Purchase', 'buy': 'Purchase', 'bought': 'Purchase',
+  'sale_full': 'Sale (Full)', 'sale_partial': 'Sale (Partial)',
+  'sale': 'Sale', 'sell': 'Sale', 'sold': 'Sale',
   'exchange': 'Exchange',
 };
 
 function normalizeTransaction(raw) {
   if (!raw) return 'Purchase';
-  const lower = raw.toLowerCase().replace(/[\s_-]+/g, '_');
-  for (const [key, val] of Object.entries(TRANSACTION_MAP)) {
-    if (lower.includes(key.replace(/_/g, ''))) return val;
-  }
+  const lower = raw.toLowerCase().replace(/[\s_()-]+/g, '');
+  if (lower.includes('purchase') || lower.includes('buy') || lower.includes('bought')) return 'Purchase';
+  if (lower.includes('salefull') || lower === 'salefull') return 'Sale (Full)';
+  if (lower.includes('salepartial') || lower === 'salepartial') return 'Sale (Partial)';
+  if (lower.includes('sale') || lower.includes('sell') || lower.includes('sold')) return 'Sale';
+  if (lower.includes('exchange')) return 'Exchange';
   return raw;
 }
 
@@ -59,10 +58,6 @@ async function batchOp(items, fn, size = 20) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user || user.role !== 'admin') {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
 
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 30);
@@ -88,7 +83,6 @@ Deno.serve(async (req) => {
 
     const filtered = all
       .filter(item => {
-        // Handle both field name formats for date
         const dateStr = item.disclosure_date || item.transaction_date || item.TransactionDate || item.date || item.Date || '';
         if (!dateStr) return false;
         const d = new Date(dateStr);
@@ -98,16 +92,10 @@ Deno.serve(async (req) => {
 
     const records = filtered
       .map(item => {
-        // Handle both field name formats for symbol
         const symbol = (item.ticker || item.symbol || item.Ticker || item.Symbol || item.asset_description || '').toUpperCase().trim();
         if (!symbol || symbol.length > 10) return null;
-
-        // Handle both field name formats for date
         const dateStr = item.disclosure_date || item.transaction_date || item.TransactionDate || item.date || item.Date || '';
-
-        // Handle both field name formats for transaction type
         const rawTxn = item.transaction || item.type || item.transaction_type || item.Transaction || '';
-
         return {
           symbol,
           representative: item.representative || item.Representative || item.name || item.senator || 'Unknown',
@@ -122,15 +110,14 @@ Deno.serve(async (req) => {
     await batchOp(existing, s => base44.asServiceRole.entities.CongressSignal.delete(s.id));
     await batchOp(records, r => base44.asServiceRole.entities.CongressSignal.create(r));
 
-    // Fire notifications for large trades ($50k+)
-    const LARGE_TRADE_AMOUNTS = ['$50,001 - $100,000', '$100,001 - $250,000', '$250,001 - $500,000', '$500,001 - $1,000,000', 'Over $1,000,000', '$1,000,001 - $5,000,000'];
+    // Notify for large trades ($50k+)
+    const LARGE_TRADE_AMOUNTS = ['$50,001 - $100,000', '$100,001 - $250,000', '$250,001 - $500,000', '$500,001 - $1,000,000', 'Over $1,000,000'];
     const largeTrades = records.filter(r => {
-      const amt = (r.amount || '').replace(/,/g, '');
-      const num = parseFloat(amt.replace(/[^0-9.]/g, ''));
+      const num = parseFloat((r.amount || '').replace(/[^0-9.]/g, ''));
       return num >= 50000 || LARGE_TRADE_AMOUNTS.some(a => r.amount?.includes(a.replace(/,/g, '')));
     });
     for (const trade of largeTrades.slice(0, 5)) {
-      const action = trade.transaction?.toLowerCase().includes('purchase') || trade.transaction?.toLowerCase().includes('buy') ? 'bought' : 'sold';
+      const action = trade.transaction?.toLowerCase().includes('purchase') ? 'bought' : 'sold';
       await sendPush(base44, {
         title: 'AutoTrader: 🏛️ Congress Alert',
         message: `${trade.representative} ${action} ${trade.amount} of ${trade.symbol} on ${trade.date}`,

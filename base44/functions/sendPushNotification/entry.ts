@@ -6,10 +6,6 @@ const PUSHOVER_APP_TOKEN = Deno.env.get('PUSHOVER_APP_TOKEN');
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user || user.role !== 'admin') {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
 
     const body = await req.json();
     const { title, message, priority = 0, sound = 'pushover', trigger_type, symbol, value } = body;
@@ -18,9 +14,18 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'title and message are required' }, { status: 400 });
     }
 
-    const delivered_at = new Date().toISOString();
+    if (!PUSHOVER_USER_KEY || !PUSHOVER_APP_TOKEN) {
+      await base44.asServiceRole.entities.NotificationLog.create({
+        trigger_type: trigger_type || 'test',
+        title, message, symbol, value,
+        delivered_at: new Date().toISOString(),
+        status: 'failed',
+        error: 'Pushover keys not configured — add PUSHOVER_USER_KEY and PUSHOVER_APP_TOKEN in Settings.',
+      }).catch(() => {});
+      return Response.json({ error: 'Pushover keys not configured — add PUSHOVER_USER_KEY and PUSHOVER_APP_TOKEN in Settings.' }, { status: 500 });
+    }
 
-    // Check notification settings - load from StrategySettings
+    // Check notification settings
     const settingsList = await base44.asServiceRole.entities.StrategySettings.list('-created_date', 1);
     const settings = settingsList[0] || {};
     const notifEnabled = settings.notifications_enabled !== false;
@@ -30,19 +35,7 @@ Deno.serve(async (req) => {
       return Response.json({ skipped: true, reason: 'Notifications disabled for this trigger' });
     }
 
-    if (!PUSHOVER_USER_KEY || !PUSHOVER_APP_TOKEN) {
-      await base44.asServiceRole.entities.NotificationLog.create({
-        trigger_type: trigger_type || 'test',
-        title,
-        message,
-        symbol,
-        value,
-        delivered_at,
-        status: 'failed',
-        error: 'Missing PUSHOVER_USER_KEY or PUSHOVER_APP_TOKEN',
-      });
-      return Response.json({ error: 'Pushover credentials not configured' }, { status: 500 });
-    }
+    const delivered_at = new Date().toISOString();
 
     const formData = new URLSearchParams();
     formData.append('token', PUSHOVER_APP_TOKEN);
@@ -64,10 +57,7 @@ Deno.serve(async (req) => {
 
     await base44.asServiceRole.entities.NotificationLog.create({
       trigger_type: trigger_type || 'test',
-      title,
-      message,
-      symbol,
-      value,
+      title, message, symbol, value,
       delivered_at,
       status,
       error: status === 'failed' ? (result.errors?.join(', ') || `HTTP ${res.status}`) : undefined,

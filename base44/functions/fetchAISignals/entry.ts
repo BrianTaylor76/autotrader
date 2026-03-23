@@ -23,9 +23,7 @@ async function fetchYahooHeadlines(symbol) {
       if (title) titles.push(title);
     }
     return titles.slice(0, 10);
-  } catch {
-    return [];
-  }
+  } catch { return []; }
 }
 
 async function fetchFinnhubHeadlines(symbol) {
@@ -37,9 +35,7 @@ async function fetchFinnhubHeadlines(symbol) {
     if (!res?.ok) return [];
     const data = await res.json().catch(() => []);
     return (Array.isArray(data) ? data : []).slice(0, 15).map(item => item.headline || '').filter(Boolean);
-  } catch {
-    return [];
-  }
+  } catch { return []; }
 }
 
 function deduplicateHeadlines(headlines) {
@@ -47,10 +43,7 @@ function deduplicateHeadlines(headlines) {
   const result = [];
   for (const h of headlines) {
     const key = h.toLowerCase().trim();
-    if (!seen.has(key) && h.length > 5) {
-      seen.add(key);
-      result.push(h);
-    }
+    if (!seen.has(key) && h.length > 5) { seen.add(key); result.push(h); }
   }
   return result.slice(0, 10);
 }
@@ -59,11 +52,7 @@ async function callClaude(symbol, headlines) {
   const userPrompt = `Symbol: ${symbol}. Recent headlines: ${JSON.stringify(headlines)}. Return JSON only: { "sentiment": "bullish"|"bearish"|"neutral", "score": 1-10, "reasoning": "one sentence explanation" }`;
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    headers: {
-      'x-api-key': ANTHROPIC_KEY,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
+    headers: { 'x-api-key': ANTHROPIC_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify({
       model: 'claude-3-5-sonnet-20241022',
       max_tokens: 200,
@@ -72,10 +61,7 @@ async function callClaude(symbol, headlines) {
     }),
     signal: AbortSignal.timeout(30000),
   });
-  if (!res.ok) {
-    const errBody = await res.text().catch(() => '');
-    throw new Error(`Claude API error ${res.status}: ${errBody}`);
-  }
+  if (!res.ok) throw new Error(`Claude API error ${res.status}: ${await res.text().catch(() => '')}`);
   const data = await res.json();
   const text = data.content?.[0]?.text || '{}';
   const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -86,25 +72,16 @@ async function callGPT(symbol, headlines) {
   const userPrompt = `Symbol: ${symbol}. Recent headlines: ${JSON.stringify(headlines)}. Return JSON only: { "sentiment": "bullish"|"bearish"|"neutral", "score": 1-10, "reasoning": "one sentence explanation" }`;
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${OPENAI_KEY}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Authorization': `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: 'gpt-4o',
       max_tokens: 200,
       response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: userPrompt },
-      ],
+      messages: [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: userPrompt }],
     }),
     signal: AbortSignal.timeout(30000),
   });
-  if (!res.ok) {
-    const errBody = await res.text().catch(() => '');
-    throw new Error(`GPT API error ${res.status}: ${errBody}`);
-  }
+  if (!res.ok) throw new Error(`GPT API error ${res.status}: ${await res.text().catch(() => '')}`);
   const data = await res.json();
   return JSON.parse(data.choices[0].message.content);
 }
@@ -113,7 +90,6 @@ function determineGPTOnlyVerdict(gptResult, sensitivity) {
   const bearishStrong = gptResult.sentiment === 'bearish' && gptResult.score <= 4;
   const bearishMild = gptResult.sentiment === 'bearish' && gptResult.score > 4;
   const bearishLenient = gptResult.sentiment === 'bearish' && gptResult.score <= 3;
-
   if (sensitivity === 'strict') {
     if (bearishStrong) return 'block';
     if (bearishMild) return 'allow_caution';
@@ -129,81 +105,46 @@ function determineGPTOnlyVerdict(gptResult, sensitivity) {
   }
 }
 
-function determineVerdict(claudeResult, gptResult, sensitivity) {
+function determineVerdict(claudeResult, gptResult) {
   const claudeBearishStrong = claudeResult.sentiment === 'bearish' && claudeResult.score <= 3;
   const gptBearishStrong = gptResult.sentiment === 'bearish' && gptResult.score <= 3;
-  const claudeIsBearish = claudeResult.sentiment === 'bearish';
-  const gptIsBearish = gptResult.sentiment === 'bearish';
-
-  // Core rule: BOTH must be bearish with score <= 3 to block
   if (claudeBearishStrong && gptBearishStrong) return 'block';
-
-  // If only one is bearish (other is neutral/bullish) → caution only
-  if (claudeIsBearish || gptIsBearish) return 'allow_caution';
-
+  if (claudeResult.sentiment === 'bearish' || gptResult.sentiment === 'bearish') return 'allow_caution';
   return 'allow';
 }
 
 Deno.serve(async (req) => {
   const ran_at = new Date().toISOString();
-  let base44;
-  const debugInfo = {
-    env_check: {
-      ANTHROPIC_API_KEY: ANTHROPIC_KEY ? `present (${ANTHROPIC_KEY.length} chars)` : 'MISSING',
-      OPENAI_API_KEY: OPENAI_KEY ? `present (${OPENAI_KEY.length} chars)` : 'MISSING',
-      FINNHUB_API_KEY: FINNHUB_KEY ? `present (${FINNHUB_KEY.length} chars)` : 'MISSING',
-    },
-    steps: [],
-    symbol_results: [],
-  };
-
   try {
-    base44 = createClientFromRequest(req);
-    debugInfo.steps.push('SDK initialized');
-
-    const user = await base44.auth.me();
-    if (!user || user.role !== 'admin') {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
-    debugInfo.steps.push(`Authenticated as ${user.email} (role: ${user.role})`);
+    const base44 = createClientFromRequest(req);
 
     const settingsList = await base44.asServiceRole.entities.StrategySettings.list('-created_date', 1);
     const settings = settingsList[0];
     const watchlist = settings?.watchlist || [];
-    const sensitivity = settings?.veto_sensitivity || 'balanced'; // default balanced
-    debugInfo.steps.push(`Watchlist: ${JSON.stringify(watchlist)}, sensitivity: ${sensitivity}`);
+    const sensitivity = settings?.veto_sensitivity || 'balanced';
 
     if (watchlist.length === 0) {
-      return Response.json({ message: 'Watchlist is empty', count: 0, debug: debugInfo });
+      return Response.json({ message: 'Watchlist is empty', count: 0 });
     }
 
     const existing = await base44.asServiceRole.entities.AISignal.list('-analyzed_at', 200);
     const existingBySymbol = Object.fromEntries(existing.map(e => [e.symbol.toUpperCase(), e]));
-    debugInfo.steps.push(`Loaded ${existing.length} existing AISignal records`);
-
     const results = [];
 
     for (const symbol of watchlist) {
-      const symDebug = { symbol, steps: [] };
       try {
         const [yahooHeadlines, finnhubHeadlines] = await Promise.all([
           fetchYahooHeadlines(symbol),
           fetchFinnhubHeadlines(symbol),
         ]);
-        symDebug.steps.push(`Yahoo: ${yahooHeadlines.length} headlines, Finnhub: ${finnhubHeadlines.length} headlines`);
 
         const headlines = deduplicateHeadlines([...yahooHeadlines, ...finnhubHeadlines]);
-        symDebug.steps.push(`Deduped headlines: ${headlines.length}`);
-        symDebug.headlines = headlines;
 
         if (headlines.length === 0) {
-          symDebug.steps.push('No headlines found, skipping AI calls');
-          debugInfo.symbol_results.push(symDebug);
           results.push({ symbol, status: 'no_headlines' });
           continue;
         }
 
-        symDebug.steps.push('Calling Claude and GPT in parallel...');
         const [claudeSettled, gptSettled] = await Promise.allSettled([
           callClaude(symbol, headlines),
           callGPT(symbol, headlines),
@@ -211,24 +152,14 @@ Deno.serve(async (req) => {
 
         const claudeResult = claudeSettled.status === 'fulfilled'
           ? claudeSettled.value
-          : { sentiment: 'unavailable', score: null, reasoning: `Claude unavailable: ${claudeSettled.reason?.message || 'unknown error'}` };
+          : { sentiment: 'unavailable', score: null, reasoning: `Claude unavailable: ${claudeSettled.reason?.message}` };
 
-        const gptResult = gptSettled.status === 'fulfilled'
-          ? gptSettled.value
-          : null;
+        const gptResult = gptSettled.status === 'fulfilled' ? gptSettled.value : null;
+        if (!gptResult) throw new Error(`GPT failed: ${gptSettled.reason?.message}`);
 
-        symDebug.steps.push(`Claude: ${JSON.stringify(claudeResult)}`);
-        symDebug.steps.push(`GPT: ${JSON.stringify(gptResult)}`);
-
-        if (!gptResult) {
-          throw new Error(`GPT failed: ${gptSettled.reason?.message || 'unknown error'}`);
-        }
-
-        // If Claude unavailable, base verdict on GPT alone
         const overall_verdict = claudeResult.sentiment === 'unavailable'
           ? determineGPTOnlyVerdict(gptResult, sensitivity)
-          : determineVerdict(claudeResult, gptResult, sensitivity);
-        symDebug.steps.push(`Verdict: ${overall_verdict}`);
+          : determineVerdict(claudeResult, gptResult);
 
         const payload = {
           symbol,
@@ -244,45 +175,24 @@ Deno.serve(async (req) => {
         };
 
         const prev = existingBySymbol[symbol.toUpperCase()];
-        if (prev) {
-          await base44.asServiceRole.entities.AISignal.update(prev.id, payload);
-          symDebug.steps.push('Updated existing AISignal record');
-        } else {
-          await base44.asServiceRole.entities.AISignal.create(payload);
-          symDebug.steps.push('Created new AISignal record');
-        }
+        if (prev) await base44.asServiceRole.entities.AISignal.update(prev.id, payload);
+        else await base44.asServiceRole.entities.AISignal.create(payload);
 
-        debugInfo.symbol_results.push(symDebug);
         results.push({ symbol, overall_verdict, claude: claudeResult.sentiment, gpt: gptResult.sentiment });
       } catch (e) {
-        symDebug.error = e.message;
-        symDebug.stack = e.stack;
-        debugInfo.symbol_results.push(symDebug);
-        results.push({ symbol, error: e.message });
-
-        // Save per-symbol error to DebugLog
         await base44.asServiceRole.entities.DebugLog.create({
           function_name: 'fetchAISignals',
           error_message: `[${symbol}] ${e.message}`,
           stack_trace: e.stack || '',
-          context: JSON.stringify(symDebug),
+          context: JSON.stringify({ symbol }),
           ran_at,
         }).catch(() => {});
+        results.push({ symbol, error: e.message });
       }
     }
 
-    return Response.json({ success: true, count: results.length, results, debug: debugInfo, analyzed_at: ran_at });
+    return Response.json({ success: true, count: results.length, results, analyzed_at: ran_at });
   } catch (error) {
-    // Top-level error — save to DebugLog
-    if (base44) {
-      await base44.asServiceRole.entities.DebugLog.create({
-        function_name: 'fetchAISignals',
-        error_message: error.message,
-        stack_trace: error.stack || '',
-        context: JSON.stringify(debugInfo),
-        ran_at,
-      }).catch(() => {});
-    }
-    return Response.json({ error: error.message, stack: error.stack, debug: debugInfo }, { status: 500 });
+    return Response.json({ error: error.message }, { status: 500 });
   }
 });

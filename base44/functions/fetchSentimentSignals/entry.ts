@@ -1,5 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.21';
 
+const FINNHUB_KEY = Deno.env.get('FINNHUB_API_KEY');
+
 const PUSHOVER_USER_KEY = Deno.env.get('PUSHOVER_USER_KEY');
 const PUSHOVER_APP_TOKEN = Deno.env.get('PUSHOVER_APP_TOKEN');
 
@@ -31,10 +33,6 @@ async function sendPush(base44, { title, message, priority = 0, sound = 'pushove
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user || user.role !== 'admin') {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
 
     const settingsList = await base44.asServiceRole.entities.StrategySettings.list('-created_date', 1);
     const watchlist = settingsList[0]?.watchlist || [];
@@ -45,34 +43,32 @@ Deno.serve(async (req) => {
 
     const today = new Date().toISOString().split('T')[0];
 
-    // Fetch all symbols in parallel
+    // Fetch Finnhub sentiment for all symbols in parallel
     const fetched = await Promise.all(
       watchlist.map(async (symbol) => {
-        const res = await fetch(
-          `https://api.stocktwits.com/api/2/streams/symbol/${symbol}.json`,
-          { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(5000) }
-        ).catch(() => null);
+        try {
+          const url = `https://finnhub.io/api/v1/news-sentiment?symbol=${symbol}&token=${FINNHUB_KEY}`;
+          const res = await fetch(url, { signal: AbortSignal.timeout(8000) }).catch(() => null);
 
-        if (!res?.ok) return { symbol, bullish: 0, bearish: 0, sentiment_score: 0.5 };
+          if (!res?.ok) {
+            return { symbol, bullish: 0, bearish: 0, sentiment_score: 0.5 };
+          }
 
-        const data = await res.json().catch(() => ({}));
-        const messages = (data.messages || []).slice(0, 30);
+          const data = await res.json().catch(() => ({}));
+          const score = typeof data.companyNewsScore === 'number' ? data.companyNewsScore : 0.5;
+          const articlesInWeek = data.buzz?.articlesInLastWeek || 10;
 
-        let bullish = 0;
-        let bearish = 0;
-        for (const msg of messages) {
-          const sentiment = msg.entities?.sentiment?.basic;
-          if (sentiment === 'Bullish') bullish++;
-          else if (sentiment === 'Bearish') bearish++;
+          const bullish = Math.round(articlesInWeek * score);
+          const bearish = Math.round(articlesInWeek * (1 - score));
+
+          return { symbol, bullish, bearish, sentiment_score: score };
+        } catch {
+          return { symbol, bullish: 0, bearish: 0, sentiment_score: 0.5 };
         }
-
-        const total = bullish + bearish;
-        const sentiment_score = total > 0 ? bullish / total : 0.5;
-        return { symbol, bullish, bearish, sentiment_score };
       })
     );
 
-    // Load existing records + upsert all in parallel
+    // Load existing records and upsert
     const existing = await base44.asServiceRole.entities.SentimentSignal.list('-created_date', 200);
     const existingBySymbol = Object.fromEntries(existing.map(e => [e.symbol.toUpperCase(), e]));
 
@@ -85,22 +81,22 @@ Deno.serve(async (req) => {
       })
     );
 
-    // Fire notifications for unusual sentiment spikes (>80% bullish or bearish)
+    // Fire notifications for sentiment spikes
     for (const { symbol, bullish, bearish, sentiment_score } of fetched) {
       const total = bullish + bearish;
-      if (total < 5) continue; // not enough data
+      if (total < 5) continue;
       if (sentiment_score >= 0.8) {
         const pct = Math.round(sentiment_score * 100);
         await sendPush(base44, {
           title: 'AutoTrader: 📊 Sentiment Spike',
-          message: `${symbol} sentiment is ${pct}% bullish on StockTwits — unusual activity detected`,
+          message: `${symbol} news sentiment is ${pct}% bullish — unusual activity detected`,
           priority: 0, sound: 'bike', trigger_type: 'sentiment_spike', symbol, value: `${pct}% bullish`,
         });
       } else if (sentiment_score <= 0.2) {
         const pct = Math.round((1 - sentiment_score) * 100);
         await sendPush(base44, {
           title: 'AutoTrader: 📊 Sentiment Spike',
-          message: `${symbol} sentiment is ${pct}% bearish on StockTwits — unusual activity detected`,
+          message: `${symbol} news sentiment is ${pct}% bearish — unusual activity detected`,
           priority: 0, sound: 'bike', trigger_type: 'sentiment_spike', symbol, value: `${pct}% bearish`,
         });
       }

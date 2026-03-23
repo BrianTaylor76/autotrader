@@ -11,12 +11,7 @@ const headers = {
 
 Deno.serve(async (req) => {
   try {
-    const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
-
-    const { symbol, timeframe = '5Min', limit = 78 } = await req.json();
-    if (!symbol) return Response.json({ error: 'symbol is required' }, { status: 400 });
+    const { symbol = 'SPY', timeframe = '5Min', limit = 78 } = await req.json().catch(() => ({}));
 
     const url = `${ALPACA_DATA_URL}/v2/stocks/${symbol}/bars?timeframe=${timeframe}&limit=${limit}&feed=iex&sort=asc`;
     const res = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
@@ -28,6 +23,7 @@ Deno.serve(async (req) => {
 
     const data = await res.json();
     const bars = (data.bars || []).map((b) => ({
+      date: new Date(b.t).getTime(),
       time: new Date(b.t).getTime(),
       open: b.o,
       high: b.h,
