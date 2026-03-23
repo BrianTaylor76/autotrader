@@ -12,6 +12,7 @@ import Charts from '@/pages/Charts';
 import SignalConsole from '@/pages/SignalConsole';
 import Learn from '@/pages/Learn';
 import CongressWatch from '@/pages/CongressWatch';
+import Backtest from '@/pages/Backtest';
 
 function App() {
   return (
@@ -28,6 +29,7 @@ function App() {
             <Route path="/SignalConsole" element={<SignalConsole />} />
             <Route path="/Learn" element={<Learn />} />
             <Route path="/CongressWatch" element={<CongressWatch />} />
+            <Route path="/Backtest" element={<Backtest />} />
           </Route>
         </Routes>
       </Router>
