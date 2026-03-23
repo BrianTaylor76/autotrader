@@ -1,4 +1,5 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import { Landmark } from "lucide-react";
 
 export default function CongressActivity({ trades, loaded }) {
@@ -41,8 +42,11 @@ export default function CongressActivity({ trades, loaded }) {
       ) : (
         <p className="text-xs text-muted-foreground py-2">
           No congressional activity in the last 90 days.
-          {trades.length === 0 && loaded && (
-            <span className="block mt-1 text-muted-foreground/70">If you expect data here, visit Congress Watch and click Refresh Data first.</span>
+          {loaded && (
+            <span className="block mt-1">
+              Congressional data may not be loaded yet —{" "}
+              <Link to="/CongressWatch" className="text-yellow-400 underline hover:text-yellow-300">click here to go to Congress Watch and refresh data</Link>.
+            </span>
           )}
         </p>
       )}
