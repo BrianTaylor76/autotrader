@@ -1,27 +1,67 @@
 export const SP500_SYMBOLS = [
-  "MMM","AOS","ABT","ABBV","ACN","ADBE","AMD","AES","AFL","A","APD","ABNB","AKAM","ALB","ARE","ALGN","ALLE","LNT","ALL","GOOGL","GOOG","MO","AMZN","AMCR","AEE","AAL","AEP","AXP","AIG","AMT","AWK","AMP","AME","AMGN","APH","ADI","ANSS","AON","APA","AAPL","AMAT","APTV","ACGL","ADM","ANET","AJG","AIZ","T","ATO","ADSK","ADP","AZO","AVB","AVY","AXON","BKR","BALL","BAC","BBWI","BAX","BDX","WRB","BRK.B","BBY","BIO","TECH","BIIB","BLK","BX","BA","BCR","BMY","AVGO","BR","BRO","BF.B","BLDR","BG","CDNS","CZR","CPT","CPB","COF","CAH","KMX","CCL","CARR","CTLT","CAT","CBOE","CBRE","CDW","CE","COR","CNC","CNX","CDAY","CF","CRL","SCHW","CHTR","CVX","CMG","CB","CHD","CI","CINF","CTAS","CSCO","C","CFG","CLX","CME","CMS","KO","CTSH","CL","CMCSA","CMA","CAG","COP","ED","STZ","CEG","COO","CPRT","GLW","CTVA","CSGP","COST","CTRA","CCI","CSX","CMI","CVS","DHI","DHR","DRI","DVA","DE","DAL","XRAY","DVN","DXCM","FANG","DLR","DFS","DG","DLTR","D","DPZ","DOV","DOW","DHI","DTE","DUK","DD","EMN","ETN","EBAY","ECL","EIX","EW","EA","ELV","EMR","ENPH","ETR","EOG","EPAM","EQT","EFX","EQIX","EQR","ESS","EL","ETSY","EG","EVRG","ES","EXC","EXPE","EXPD","EXR","XOM","FFIV","FDS","FICO","FAST","FRT","FDX","FIS","FITB","FSLR","FE","FI","FMC","F","FTNT","FTV","FOXA","FOX","BEN","FCX","GRMN","IT","GEHC","GEN","GNRC","GD","GE","GIS","GM","GPC","GILD","GPN","GL","GS","HAL","HIG","HAS","HCA","DOC","HSIC","HSY","HES","HPE","HLT","HOLX","HD","HON","HRL","HST","HWM","HPQ","HUBB","HUM","HBAN","HII","IBM","IEX","IDXX","ITW","ILMN","INCY","IR","PODD","INTC","ICE","IFF","IP","IPG","INTU","ISRG","IVZ","INVH","IQV","IRM","JBHT","JKHY","J","JNJ","JCI","JPM","JNPR","K","KVUE","KDP","KEY","KEYS","KMB","KIM","KMI","KLAC","KHC","KR","LHX","LH","LRCX","LW","LVS","LDOS","LEN","LNC","LIN","LYV","LKQ","LMT","L","LOW","LULU","LYB","MTB","MRO","MPC","MKTX","MAR","MMC","MLM","MAS","MA","MTCH","MKC","MCD","MCK","MDT","MRK","META","MET","MTD","MGM","MCHP","MU","MSFT","MAA","MRNA","MHK","MOH","TAP","MDLZ","MPWR","MNST","MCO","MS","MOS","MSI","MSCI","NDAQ","NTAP","NFLX","NEM","NWSA","NWS","NEE","NKE","NI","NDSN","NSC","NTRS","NOC","NCLH","NRG","NUE","NVDA","NVR","NXPI","ORLY","OXY","ODFL","OMC","ON","OKE","ORCL","OTIS","PCAR","PKG","PANW","PH","PAYX","PAYC","PYPL","PNR","PEP","PFE","PCG","PM","PSX","PNW","PXD","PNC","POOL","PPG","PPL","PFG","PG","PGR","PRU","PEG","PTVE","PTC","PSA","PHM","QRVO","PWR","QCOM","DGX","RL","RJF","RTX","O","REG","REGN","RF","RSG","RMD","RHI","ROK","ROL","ROP","ROST","RCL","SPGI","CRM","SBAC","SLB","STX","SEE","SRE","NOW","SHW","SPG","SWKS","SJM","SNA","SO","LUV","SWK","SBUX","STT","STLD","STE","SYK","SYF","SNPS","SYY","TMUS","TROW","TTWO","TPR","TRGP","TGT","TEL","TDY","TFX","TER","TSLA","TXN","TXT","TMO","TJX","TSCO","TT","TDG","TRV","TRMB","TFC","TYL","TSN","USB","UDR","ULTA","UNP","UAL","UPS","URI","UNH","UHS","VLO","VTR","VRSN","VRSK","VZ","VRTX","VFC","VTRS","VICI","V","VMC","WAB","WBA","WMT","WBD","WM","WAT","WEC","WFC","WELL","WST","WDC","WRK","WY","WHR","WMB","WTW","GWW","WYNN","XEL","XYL","YUM","ZBRA","ZBH","ZION","ZTS"
+  "AAPL","MSFT","NVDA","GOOGL","AMZN","META","TSLA","BRK.B","JPM","V",
+  "UNH","XOM","JNJ","WMT","MA","PG","HD","CVX","MRK","ABBV",
+  "PEP","KO","AVGO","COST","TMO","ACN","MCD","BAC","NFLX","LLY",
+  "CSCO","ABT","DHR","TXN","NEE","PM","RTX","HON","LOW","UPS",
+  "SCHW","SPGI","BMY","AMGN","GS","ELV","BLK","DE","SYK","ISRG"
 ];
 
 export const NASDAQ100_SYMBOLS = [
-  "ADBE","ADP","ABNB","ALGN","GOOGL","GOOG","AMZN","AMD","AEP","AMGN","ADI","ANSS","AAPL","AMAT","ASML","AZN","TEAM","ADSK","BKR","BIIB","BKNG","AVGO","CDNS","CHTR","CTAS","CSCO","CTSH","CMCSA","CEG","CPRT","CSGP","COST","CRWD","CSX","DDOG","DXCM","FANG","DLTR","EA","EBAY","EXC","FAST","FTNT","GILD","GFS","HON","IDXX","ILMN","INTC","INTU","ISRG","KDP","KLAC","KHC","LRCX","LULU","MAR","MRVL","MTCH","MELI","META","MCHP","MU","MSFT","MRNA","MDLZ","MDB","MNST","NDAQ","NTES","NFLX","NVDA","NXPI","ORLY","ODFL","ON","PANW","PCAR","PAYX","PYPL","PDD","QCOM","REGN","ROST","CRM","SPLK","SBUX","SNPS","TTWO","TMUS","TSLA","TXN","VRSK","VRTX","WBA","WDAY","WBD","XCEL","ZM","ZS"
+  "QQQ","AAPL","MSFT","NVDA","AMZN","META","GOOGL","TSLA","AVGO","ASML",
+  "ADBE","COST","AMD","NFLX","QCOM","TMUS","INTC","TXN","INTU","AMAT",
+  "CSCO","BKNG","HON","SBUX","GILD","ADI","REGN","VRTX","MDLZ","LRCX",
+  "MU","PANW","SNPS","CDNS","KLAC","MELI","FTNT","ORLY","MNST","CTAS",
+  "NXPI","PAYX","CHTR","ADP","ROST","FAST","DXCM","IDXX","ILMN","BIIB"
 ];
 
 export const ETF_SYMBOLS = [
-  "SPY","QQQ","IWM","DIA","VTI","VOO","IVV","VEA","EFA","AGG","BND","GLD","SLV","TLT","HYG","LQD","XLF","XLK","XLE","XLV","XLI","XLU","XLB","XLC","XLRE","XLP","XLY","VNQ","ARKK","ARKG","ARKW","ARKF","ARKQ","SQQQ","TQQQ","SH","PSQ","IWF","IWD","VUG","VTV","IEMG","EEM","VWO","KWEB","SMH","SOXX","IBB","XBI","IYR","VIXY"
+  "SPY","QQQ","IWM","DIA","VTI","VOO","GLD","SLV","TLT","HYG",
+  "XLF","XLK","XLE","XLV","ARKK","ARKG","ARKW","SCHD","VYM","JEPI"
 ];
 
 export const CRYPTO_SYMBOLS = [
-  "BTC/USD","ETH/USD","SOL/USD","DOGE/USD","LINK/USD","AVAX/USD","MATIC/USD","UNI/USD","BCH/USD","LTC/USD","AAVE/USD","DOT/USD","ADA/USD","XRP/USD","BAT/USD","CRV/USD","SHIB/USD","SUSHI/USD"
+  "BTCUSD","ETHUSD","SOLUSD","AVAXUSD","MATICUSD","LINKUSD","UNIUSD","AAVEUSD","DOTUSD","ADAUSD"
+];
+
+export const SMALLCAP_SYMBOLS = [
+  "GME","AMC","PLTR","SOFI","RIVN","LCID","HOOD","SPCE","NKLA","WKHS",
+  "BLNK","CHPT","EVGO","FCEL","GOEV","PTRA","CLOV","SNDL","TLRY","BYND"
 ];
 
 export const COMPANY_NAMES = {
-  AAPL:"Apple Inc",MSFT:"Microsoft Corp",GOOGL:"Alphabet Inc",AMZN:"Amazon.com Inc",NVDA:"NVIDIA Corp",META:"Meta Platforms",TSLA:"Tesla Inc",BRK_B:"Berkshire Hathaway",AVGO:"Broadcom Inc",V:"Visa Inc",JPM:"JPMorgan Chase",MA:"Mastercard Inc",UNH:"UnitedHealth Group",COST:"Costco Wholesale",HD:"Home Depot",CVX:"Chevron Corp",MRK:"Merck & Co",ABBV:"AbbVie Inc",PEP:"PepsiCo Inc",ADBE:"Adobe Inc",KO:"Coca-Cola Co",WMT:"Walmart Inc",PFE:"Pfizer Inc",CRM:"Salesforce Inc",LIN:"Linde PLC",ACN:"Accenture PLC",AMD:"Advanced Micro Devices",NFLX:"Netflix Inc",TMO:"Thermo Fisher",DHR:"Danaher Corp",BAC:"Bank of America",INTC:"Intel Corp",ORCL:"Oracle Corp",CSCO:"Cisco Systems",QCOM:"Qualcomm Inc",ABT:"Abbott Labs",DIS:"Walt Disney Co",WFC:"Wells Fargo",TXN:"Texas Instruments",NEE:"NextEra Energy",BMY:"Bristol-Myers Squibb",VZ:"Verizon Communications",PM:"Philip Morris",INTU:"Intuit Inc",AMGN:"Amgen Inc",HON:"Honeywell",IBM:"IBM Corp",SPGI:"S&P Global",GE:"GE Aerospace",ISRG:"Intuitive Surgical",
-  SPY:"SPDR S&P 500 ETF",QQQ:"Invesco QQQ Trust",IWM:"iShares Russell 2000",DIA:"SPDR Dow Jones ETF",VTI:"Vanguard Total Market",VOO:"Vanguard S&P 500",GLD:"SPDR Gold Shares",TLT:"iShares 20+ Yr Treasury",ARKK:"ARK Innovation ETF",TQQQ:"ProShares Ultra QQQ",SQQQ:"ProShares UltraPro Short QQQ",XLF:"Financial Select SPDR",XLK:"Technology Select SPDR",XLE:"Energy Select SPDR",XLV:"Health Care Select SPDR",SMH:"VanEck Semiconductor ETF",SOXX:"iShares Semiconductor ETF",IBB:"iShares Biotechnology ETF",
-  "BTC/USD":"Bitcoin","ETH/USD":"Ethereum","SOL/USD":"Solana","DOGE/USD":"Dogecoin","LINK/USD":"Chainlink","AVAX/USD":"Avalanche","ADA/USD":"Cardano","XRP/USD":"Ripple","LTC/USD":"Litecoin"
+  AAPL:"Apple Inc",MSFT:"Microsoft Corp",NVDA:"NVIDIA Corp",GOOGL:"Alphabet Inc",AMZN:"Amazon.com",
+  META:"Meta Platforms",TSLA:"Tesla Inc","BRK.B":"Berkshire Hathaway",JPM:"JPMorgan Chase",V:"Visa Inc",
+  UNH:"UnitedHealth Group",XOM:"Exxon Mobil",JNJ:"Johnson & Johnson",WMT:"Walmart",MA:"Mastercard",
+  PG:"Procter & Gamble",HD:"Home Depot",CVX:"Chevron",MRK:"Merck & Co",ABBV:"AbbVie",
+  PEP:"PepsiCo",KO:"Coca-Cola",AVGO:"Broadcom",COST:"Costco",TMO:"Thermo Fisher",
+  ACN:"Accenture",MCD:"McDonald's",BAC:"Bank of America",NFLX:"Netflix",LLY:"Eli Lilly",
+  CSCO:"Cisco Systems",ABT:"Abbott Labs",DHR:"Danaher",TXN:"Texas Instruments",NEE:"NextEra Energy",
+  PM:"Philip Morris",RTX:"RTX Corp",HON:"Honeywell",LOW:"Lowe's",UPS:"United Parcel Service",
+  SCHW:"Charles Schwab",SPGI:"S&P Global",BMY:"Bristol-Myers Squibb",AMGN:"Amgen",GS:"Goldman Sachs",
+  ELV:"Elevance Health",BLK:"BlackRock",DE:"Deere & Company",SYK:"Stryker",ISRG:"Intuitive Surgical",
+  QQQ:"Invesco QQQ Trust",AMD:"Advanced Micro Devices",ASML:"ASML Holding",ADBE:"Adobe",INTU:"Intuit",
+  AMAT:"Applied Materials",BKNG:"Booking Holdings",SBUX:"Starbucks",GILD:"Gilead Sciences",ADI:"Analog Devices",
+  REGN:"Regeneron",VRTX:"Vertex Pharma",MDLZ:"Mondelez",LRCX:"Lam Research",MU:"Micron Technology",
+  PANW:"Palo Alto Networks",SNPS:"Synopsys",CDNS:"Cadence Design",KLAC:"KLA Corp",MELI:"MercadoLibre",
+  FTNT:"Fortinet",ORLY:"O'Reilly Auto",MNST:"Monster Beverage",CTAS:"Cintas",NXPI:"NXP Semiconductors",
+  PAYX:"Paychex",CHTR:"Charter Communications",ADP:"Automatic Data Processing",ROST:"Ross Stores",
+  FAST:"Fastenal",DXCM:"Dexcom",IDXX:"IDEXX Labs",ILMN:"Illumina",BIIB:"Biogen",
+  SPY:"SPDR S&P 500 ETF",IWM:"iShares Russell 2000",DIA:"SPDR Dow Jones ETF",VTI:"Vanguard Total Market",
+  VOO:"Vanguard S&P 500",GLD:"SPDR Gold Shares",SLV:"iShares Silver Trust",TLT:"iShares 20yr Treasury",
+  HYG:"iShares High Yield Bond",XLF:"Financial SPDR",XLK:"Technology SPDR",XLE:"Energy SPDR",
+  XLV:"Health Care SPDR",ARKK:"ARK Innovation ETF",ARKG:"ARK Genomic ETF",ARKW:"ARK Next Gen Internet",
+  SCHD:"Schwab US Dividend",VYM:"Vanguard High Dividend",JEPI:"JPMorgan Equity Premium",
+  BTCUSD:"Bitcoin",ETHUSD:"Ethereum",SOLUSD:"Solana",AVAXUSD:"Avalanche",MATICUSD:"Polygon",
+  LINKUSD:"Chainlink",UNIUSD:"Uniswap",AAVEUSD:"Aave",DOTUSD:"Polkadot",ADAUSD:"Cardano",
+  GME:"GameStop",AMC:"AMC Entertainment",PLTR:"Palantir Technologies",SOFI:"SoFi Technologies",
+  RIVN:"Rivian Automotive",LCID:"Lucid Group",HOOD:"Robinhood Markets",SPCE:"Virgin Galactic",
+  NKLA:"Nikola Corp",WKHS:"Workhorse Group",BLNK:"Blink Charging",CHPT:"ChargePoint",
+  EVGO:"EVgo Inc",FCEL:"FuelCell Energy",GOEV:"Canoo Inc",PTRA:"Proterra",
+  CLOV:"Clover Health",SNDL:"SNDL Inc",TLRY:"Tilray Brands",BYND:"Beyond Meat",
 };
 
 export function getCompanyName(symbol) {
-  return COMPANY_NAMES[symbol] || COMPANY_NAMES[symbol.replace(".","_")] || symbol;
+  return COMPANY_NAMES[symbol] || symbol;
 }
 
 export function getAllStocks() {
@@ -29,5 +69,6 @@ export function getAllStocks() {
   const nasdaq = NASDAQ100_SYMBOLS.filter(s => !SP500_SYMBOLS.includes(s)).map(s => ({ symbol: s, name: getCompanyName(s), market: "NASDAQ 100" }));
   const etfs = ETF_SYMBOLS.map(s => ({ symbol: s, name: getCompanyName(s), market: "ETF" }));
   const crypto = CRYPTO_SYMBOLS.map(s => ({ symbol: s, name: getCompanyName(s), market: "Crypto" }));
-  return [...sp500, ...nasdaq, ...etfs, ...crypto];
+  const smallcap = SMALLCAP_SYMBOLS.map(s => ({ symbol: s, name: getCompanyName(s), market: "Small Cap" }));
+  return [...sp500, ...nasdaq, ...etfs, ...crypto, ...smallcap];
 }

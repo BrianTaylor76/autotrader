@@ -1,113 +1,172 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
-import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { RefreshCw } from "lucide-react";
 
-function calcMA(data, period, idx) {
+function calcMA(closes, period, idx) {
   if (idx < period - 1) return null;
-  const sum = data.slice(idx - period + 1, idx + 1).reduce((s, d) => s + d.c, 0);
-  return sum / period;
-}
-
-const CustomCandleBar = (props) => {
-  const { x, y, width, height, payload } = props;
-  if (!payload) return null;
-  const { o, c, h, l } = payload;
-  const isUp = c >= o;
-  const color = isUp ? "hsl(142 70% 45%)" : "hsl(0 72% 51%)";
-  const centerX = x + width / 2;
-  const barTop = Math.min(y, y + height);
-  const barH = Math.abs(height) || 1;
-  return (
-    <g>
-      <line x1={centerX} y1={props.yAxis?.scale?.(h) || barTop - 2} x2={centerX} y2={props.yAxis?.scale?.(l) || barTop + barH + 2} stroke={color} strokeWidth={1} />
-      <rect x={x + 1} y={barTop} width={Math.max(width - 2, 1)} height={barH} fill={color} fillOpacity={0.85} />
-    </g>
-  );
-};
-
-function CustomTooltip({ active, payload, label }) {
-  if (!active || !payload?.length) return null;
-  const d = payload[0]?.payload;
-  if (!d) return null;
-  return (
-    <div className="bg-card border border-border rounded-lg p-3 text-xs shadow-lg">
-      <p className="text-muted-foreground mb-2 font-mono">{label}</p>
-      <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-        <span className="text-muted-foreground">Open</span><span className="font-mono text-foreground">${d.o?.toFixed(2)}</span>
-        <span className="text-muted-foreground">High</span><span className="font-mono text-primary">${d.h?.toFixed(2)}</span>
-        <span className="text-muted-foreground">Low</span><span className="font-mono text-destructive">${d.l?.toFixed(2)}</span>
-        <span className="text-muted-foreground">Close</span><span className="font-mono text-foreground">${d.c?.toFixed(2)}</span>
-        <span className="text-muted-foreground">Volume</span><span className="font-mono text-foreground">{d.v?.toLocaleString()}</span>
-      </div>
-    </div>
-  );
+  return closes.slice(idx - period + 1, idx + 1).reduce((s, v) => s + v, 0) / period;
 }
 
 export default function StockChart({ symbol }) {
   const [chartData, setChartData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [crossover, setCrossover] = useState(null);
+  const canvasRef = useRef(null);
 
   useEffect(() => {
     if (!symbol) return;
     setLoading(true);
+    setError(null);
     const end = new Date().toISOString().split("T")[0];
-    const start = new Date(Date.now() - 180 * 86400000).toISOString().split("T")[0];
+    const startDate = new Date(Date.now() - 180 * 86400000);
+    const start = startDate.toISOString().split("T")[0];
     base44.functions.invoke("fetchStockData", { action: "bars", symbol, start, end })
       .then(res => {
+        if (res.data?.error) throw new Error(res.data.error);
         const bars = res.data?.bars || [];
-        const data = bars.map((b, i) => {
-          const close = b.c || b.C;
-          const open = b.o || b.O;
-          const high = b.h || b.H;
-          const low = b.l || b.L;
-          const volume = b.v || b.V;
-          return { date: (b.t || "").split("T")[0], o: open, h: high, l: low, c: close, v: volume, idx: i };
-        });
-        // Add MAs
-        const withMA = data.map((d, i) => ({
-          ...d,
-          ma5: calcMA(data, 5, i),
-          ma13: calcMA(data, 13, i),
-          range: [d.l, d.h],
+        if (!bars.length) throw new Error("No price data available");
+        const closes = bars.map(b => b.c);
+        const data = bars.map((b, i) => ({
+          date: (b.t || "").split("T")[0],
+          o: b.o, h: b.h, l: b.l, c: b.c, v: b.v,
+          ma5: calcMA(closes, 5, i),
+          ma13: calcMA(closes, 13, i),
         }));
-        // Detect recent crossover
-        for (let i = withMA.length - 1; i >= Math.max(0, withMA.length - 30); i--) {
-          const cur = withMA[i];
-          const prev = withMA[i - 1];
+        // Detect crossover in last 30 days
+        for (let i = data.length - 1; i >= Math.max(0, data.length - 30); i--) {
+          const cur = data[i], prev = data[i - 1];
           if (cur?.ma5 && cur?.ma13 && prev?.ma5 && prev?.ma13) {
             if (prev.ma5 <= prev.ma13 && cur.ma5 > cur.ma13) { setCrossover({ date: cur.date, type: "golden" }); break; }
             if (prev.ma5 >= prev.ma13 && cur.ma5 < cur.ma13) { setCrossover({ date: cur.date, type: "death" }); break; }
           }
         }
-        setChartData(withMA);
+        setChartData(data);
       })
+      .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, [symbol]);
 
+  // Draw chart on canvas
+  useEffect(() => {
+    if (!chartData.length || !canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    const W = canvas.width;
+    const H = canvas.height;
+    const PAD = { top: 10, right: 10, bottom: 40, left: 55 };
+    const chartW = W - PAD.left - PAD.right;
+    const chartH = H - PAD.top - PAD.bottom;
+
+    ctx.clearRect(0, 0, W, H);
+
+    const highs = chartData.map(d => d.h);
+    const lows = chartData.map(d => d.l);
+    const minP = Math.min(...lows) * 0.998;
+    const maxP = Math.max(...highs) * 1.002;
+    const priceRange = maxP - minP;
+
+    function px(price) { return PAD.top + chartH - ((price - minP) / priceRange) * chartH; }
+    function x(i) { return PAD.left + (i / (chartData.length - 1)) * chartW; }
+
+    // Background
+    ctx.fillStyle = "hsl(220 18% 9%)";
+    ctx.fillRect(0, 0, W, H);
+
+    // Grid lines
+    ctx.strokeStyle = "rgba(255,255,255,0.05)";
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const y = PAD.top + (i / 4) * chartH;
+      ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(W - PAD.right, y); ctx.stroke();
+      const price = maxP - (i / 4) * priceRange;
+      ctx.fillStyle = "rgba(255,255,255,0.4)";
+      ctx.font = "10px monospace";
+      ctx.textAlign = "right";
+      ctx.fillText(`$${price.toFixed(0)}`, PAD.left - 4, y + 3);
+    }
+
+    // Candles
+    const candleW = Math.max(1, (chartW / chartData.length) * 0.7);
+    chartData.forEach((d, i) => {
+      const xi = x(i);
+      const up = d.c >= d.o;
+      const color = up ? "hsl(142 70% 45%)" : "hsl(0 72% 51%)";
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+
+      // Wick
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(xi, px(d.h));
+      ctx.lineTo(xi, px(d.l));
+      ctx.stroke();
+
+      // Body
+      const bodyTop = px(Math.max(d.o, d.c));
+      const bodyBot = px(Math.min(d.o, d.c));
+      const bodyH = Math.max(1, bodyBot - bodyTop);
+      ctx.fillRect(xi - candleW / 2, bodyTop, candleW, bodyH);
+    });
+
+    // MA lines
+    function drawMA(key, color) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      let started = false;
+      chartData.forEach((d, i) => {
+        if (d[key] == null) return;
+        const xi = x(i), yi = px(d[key]);
+        if (!started) { ctx.moveTo(xi, yi); started = true; }
+        else ctx.lineTo(xi, yi);
+      });
+      ctx.stroke();
+    }
+    drawMA("ma5", "hsl(142 70% 45%)");
+    drawMA("ma13", "#3b82f6");
+
+    // X axis dates (show ~6 labels)
+    ctx.fillStyle = "rgba(255,255,255,0.4)";
+    ctx.font = "9px monospace";
+    ctx.textAlign = "center";
+    const step = Math.floor(chartData.length / 6);
+    for (let i = 0; i < chartData.length; i += step) {
+      const d = chartData[i];
+      if (d) ctx.fillText(d.date.slice(5), x(i), H - PAD.bottom + 14);
+    }
+
+    // Legend
+    ctx.font = "10px monospace";
+    ctx.fillStyle = "hsl(142 70% 45%)";
+    ctx.textAlign = "left";
+    ctx.fillText("— MA5", PAD.left, PAD.top - 2);
+    ctx.fillStyle = "#3b82f6";
+    ctx.fillText("— MA13", PAD.left + 50, PAD.top - 2);
+  }, [chartData]);
+
   if (loading) return <div className="h-64 bg-secondary/30 animate-pulse rounded-xl" />;
-  if (!chartData.length) return <p className="text-sm text-muted-foreground py-4">No chart data available.</p>;
+  if (error) return (
+    <div className="h-40 flex flex-col items-center justify-center gap-2">
+      <p className="text-sm text-destructive">{error}</p>
+      <button onClick={() => { setError(null); setLoading(true); }} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"><RefreshCw className="w-3 h-3" /> Retry</button>
+    </div>
+  );
 
   return (
     <div>
       {crossover && (
         <p className={`text-xs mb-2 px-3 py-1.5 rounded-lg border inline-block ${crossover.type === "golden" ? "bg-primary/10 text-primary border-primary/20" : "bg-destructive/10 text-destructive border-destructive/20"}`}>
-          {crossover.type === "golden" ? "🟢 Golden cross" : "🔴 Death cross"} on {crossover.date} (last 30 days)
+          {crossover.type === "golden" ? "🟢 Golden cross" : "🔴 Death cross"} detected — {crossover.date}
         </p>
       )}
-      <ResponsiveContainer width="100%" height={240}>
-        <ComposedChart data={chartData} margin={{ top: 5, right: 10, left: 5, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.4} />
-          <XAxis dataKey="date" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }} tickLine={false} interval="preserveStartEnd" />
-          <YAxis domain={["auto","auto"]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }} tickLine={false} width={50} tickFormatter={v => `$${v.toFixed(0)}`} />
-          <Tooltip content={<CustomTooltip />} />
-          <Bar dataKey="c" shape={<CustomCandleBar />}>
-            {chartData.map((d, i) => <Cell key={i} fill={d.c >= d.o ? "hsl(142 70% 45%)" : "hsl(0 72% 51%)"} />)}
-          </Bar>
-          <Line type="monotone" dataKey="ma5" stroke="hsl(var(--primary))" strokeWidth={1.5} dot={false} name="MA5" />
-          <Line type="monotone" dataKey="ma13" stroke="#3b82f6" strokeWidth={1.5} dot={false} name="MA13" />
-        </ComposedChart>
-      </ResponsiveContainer>
+      <canvas
+        ref={canvasRef}
+        width={700}
+        height={240}
+        className="w-full rounded-lg"
+        style={{ imageRendering: "auto" }}
+      />
     </div>
   );
 }
