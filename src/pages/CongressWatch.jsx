@@ -54,10 +54,10 @@ export default function CongressWatch() {
     try { return JSON.parse(localStorage.getItem("watched_congress_members") || "[]"); } catch { return []; }
   });
 
-  const { data: trades = [], isLoading } = useQuery({
+  const { data: trades = [], isLoading, isFetching } = useQuery({
     queryKey: ["congress_trades"],
-    queryFn: () => base44.entities.CongressTrade.list("-disclosure_date", 500),
-    staleTime: 300000,
+    queryFn: () => base44.entities.CongressTrade.list("-transaction_date", 500),
+    staleTime: 0,
   });
 
   const { data: consensusScores = [] } = useQuery({
@@ -117,24 +117,8 @@ export default function CongressWatch() {
     setRefreshing(true);
     try {
       await base44.functions.invoke("fetchCongressTrades", {});
-      await queryClient.invalidateQueries({ queryKey: ["congress_trades"] });
+      await queryClient.refetchQueries({ queryKey: ["congress_trades"] });
       toast({ title: "Congress Watch updated", description: "Latest trades fetched." });
-      if (!bgFetchRef.current) {
-        bgFetchRef.current = true;
-        setBgLoading(true);
-        setTimeout(async () => {
-          try {
-            await queryClient.prefetchQuery({
-              queryKey: ["congress_trades_full"],
-              queryFn: () => base44.entities.CongressTrade.list("-disclosure_date", 5000),
-              staleTime: 300000,
-            });
-          } finally {
-            setBgLoading(false);
-            bgFetchRef.current = false;
-          }
-        }, 2000);
-      }
     } catch (e) {
       toast({ title: "Refresh failed", description: e.message, variant: "destructive" });
     }
@@ -236,9 +220,10 @@ export default function CongressWatch() {
 
       <CongressStatsRow trades={trades} />
 
-      {isLoading ? (
+      {isLoading || isFetching ? (
         <div className="space-y-2">
           {[1,2,3,4,5].map(i => <div key={i} className="h-14 bg-card rounded-lg animate-pulse border border-border" />)}
+          {isFetching && !isLoading && <p className="text-xs text-muted-foreground text-center py-1">Refreshing data…</p>}
         </div>
       ) : filtered.length === 0 ? (
         <Card className="bg-card border-border p-12 text-center">
@@ -276,7 +261,7 @@ export default function CongressWatch() {
           </div>
           <div className="px-4 py-3 border-t border-border flex items-center justify-between flex-wrap gap-3">
             <span className="text-xs text-muted-foreground">
-              {filtered.length} trades · Page {safePage} of {totalPages}
+              Showing {Math.min(pageSlice.length, PAGE_SIZE)} of {filtered.length} trades (Page {safePage} of {totalPages})
             </span>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={() => goToPage(safePage - 1)} disabled={safePage <= 1} className="h-7 px-2">

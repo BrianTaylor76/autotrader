@@ -18,8 +18,16 @@ function AmountBadge({ amount }) {
 }
 
 export default function TradeRow({ trade, isHot, expanded, onToggleExpand, isWatched, idx }) {
-  const isBuy = trade.transaction === "buy";
-  const isSell = trade.transaction === "sell";
+  const symbol = trade.symbol || "N/A";
+  const representative = trade.representative || "Unknown";
+  const transaction = trade.transaction || "N/A";
+  const amountRange = trade.amount_range || "Undisclosed";
+  const displayDate = trade.disclosure_date || trade.transaction_date || "—";
+  const party = trade.party || "Unknown";
+  const state = trade.state || "N/A";
+  const chamber = trade.chamber || "Unknown";
+  const isBuy = transaction === "buy";
+  const isSell = transaction === "sell";
 
   let daysToDisclose = null;
   try {
@@ -47,35 +55,32 @@ export default function TradeRow({ trade, isHot, expanded, onToggleExpand, isWat
         onClick={onToggleExpand}
       >
         <td className="px-4 py-3 text-xs text-muted-foreground font-mono whitespace-nowrap">
-          {trade.disclosure_date || "—"}
+          {displayDate}
         </td>
         <td className="px-4 py-3">
           <span className="font-medium text-foreground text-xs">
-            {trade.representative}
+            {representative}
             {isWatched && <span className="ml-1.5 text-yellow-400">★</span>}
           </span>
         </td>
-        <td className="px-4 py-3 text-xs text-muted-foreground">{trade.chamber}</td>
-        <td className="px-4 py-3 text-xs text-muted-foreground font-mono">{trade.state || "—"}</td>
+        <td className="px-4 py-3 text-xs text-muted-foreground">{chamber}</td>
+        <td className="px-4 py-3 text-xs text-muted-foreground font-mono">{state}</td>
         <td className="px-4 py-3 text-xs">
           <span className="flex items-center">
-            <PartyDot party={trade.party} />
-            <span className="text-muted-foreground">{trade.party || "Unknown"}</span>
+            <PartyDot party={party} />
+            <span className="text-muted-foreground">{party}</span>
           </span>
         </td>
         <td className="px-4 py-3">
-          <span className="font-mono font-bold text-foreground text-xs">{trade.symbol || "—"}</span>
+          <span className="font-mono font-bold text-foreground text-xs">{symbol}</span>
         </td>
         <td className="px-4 py-3">
           <span className={`text-xs font-semibold uppercase ${isBuy ? "text-primary" : isSell ? "text-destructive" : "text-muted-foreground"}`}>
-            {trade.transaction}
+            {transaction}
           </span>
         </td>
         <td className="px-4 py-3">
-          <AmountBadge amount={trade.amount_range} />
-        </td>
-        <td className="px-4 py-3 text-xs font-mono">
-          {daysToDisclose !== null ? (
+          <AmountBadge amount={amountRange} />
             <span className={daysToDisclose > 30 ? "text-destructive font-semibold" : "text-muted-foreground"}>
               {daysToDisclose}d {daysToDisclose > 30 ? "⚠️" : ""}
             </span>
