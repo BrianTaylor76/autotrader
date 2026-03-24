@@ -85,16 +85,18 @@ Deno.serve(async (req) => {
     }
 
     // Map Quiver fields to CongressTrade entity schema
-    // Quiver fields: Name, Ticker, Transaction, Amount, Date, ReportDate, House/Senate, State, Party
+    // Actual Quiver fields: Representative, Ticker, Transaction, Range, Amount, ReportDate, TransactionDate, House (Representatives/Senate), Party (R/D), State
     const mapped = rawRecords
-      .filter(r => r.Ticker && r.Ticker.trim() && r.Ticker !== '--' && r.Name)
+      .filter(r => r.Ticker && r.Ticker.trim() && r.Ticker !== '--' && r.Representative)
       .map(r => {
-        const name = (r.Name || '').trim();
-        const chamber = r.Chamber === 'Senate' ? 'Senate' : 'House';
+        const name = (r.Representative || '').trim();
+        const chamber = (r.House === 'Senate') ? 'Senate' : 'House';
         const party = r.Party
-          ? (r.Party.includes('R') ? 'Republican' : r.Party.includes('D') ? 'Democrat' : 'Unknown')
+          ? (r.Party.trim().toUpperCase().startsWith('R') ? 'Republican'
+            : r.Party.trim().toUpperCase().startsWith('D') ? 'Democrat'
+            : 'Unknown')
           : inferParty(name);
-        const transactionDate = r.Date || r.TransactionDate || '';
+        const transactionDate = r.TransactionDate || r.Date || '';
         const disclosureDate = r.ReportDate || r.FiledDate || transactionDate;
         return {
           representative: name,
@@ -103,10 +105,10 @@ Deno.serve(async (req) => {
           party,
           symbol: r.Ticker.toUpperCase().trim(),
           transaction: normalizeTransaction(r.Transaction),
-          amount_range: r.Amount || r.Range || 'Undisclosed',
+          amount_range: r.Range || r.Amount || 'Undisclosed',
           disclosure_date: disclosureDate,
           transaction_date: transactionDate,
-          description: r.Description || r.Comment || '',
+          description: r.Description || '',
           source_id: `quiver-${disclosureDate}-${name}-${r.Ticker}-${transactionDate}`,
         };
       });
