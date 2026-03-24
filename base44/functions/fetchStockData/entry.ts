@@ -186,8 +186,18 @@ Deno.serve(async (req) => {
           );
           bars = data.bars?.[slashSym] || [];
         } else {
+          const data = await alpacaGet(
+            `https://data.alpaca.markets/v2/stocks/${symbol}/bars?timeframe=1Day&start=${start}&end=${end}&limit=180&feed=iex&adjustment=raw`
+          );
+          bars = data.bars || [];
+        }
+        return Response.json({ bars });
+      } catch (e) {
+        return Response.json({ bars: [], error: e.message });
+      }
+    }
 
-    // ── ASSET INFO ───────────────────────────────────────────────────────────────
+    // ── ASSET INFO ────────────────────────────────────────────────────────
     if (action === "asset") {
       if (!symbol) return Response.json({ fractionable: false });
       if (symbol.includes("USD") || symbol.includes("/")) {
