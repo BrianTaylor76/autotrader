@@ -318,18 +318,25 @@ Deno.serve(async (req) => {
       return Response.json({ message: `Daily loss limit of $${daily_loss_limit} hit.`, daily_loss: dailyLoss });
     }
 
-    // Auto-refresh stale consensus scores (older than 24 hours)
-    const latestScore = allScores[0];
+    // Fetch consensus scores + AI signals, auto-refresh if stale (> 24 hours)
+    let [allScores, allAISignals] = await Promise.all([
+      base44.asServiceRole.entities.ConsensusScore.list('-scored_at', 200),
+      base44.asServiceRole.entities.AISignal.list('-analyzed_at', 200),
+    ]);
+
     const staleThreshold = Date.now() - 24 * 60 * 60 * 1000;
+    const latestScore = allScores[0];
     const isStale = !latestScore || new Date(latestScore.scored_at).getTime() < staleThreshold;
     if (isStale) {
       await base44.functions.invoke('scoreConsensus', {}).catch(() => {});
       await base44.asServiceRole.entities.StrategySettings.update(settings.id, {
         consensus_refreshed_at: new Date().toISOString(),
       }).catch(() => {});
+      // Re-fetch fresh scores after refresh
+      allScores = await base44.asServiceRole.entities.ConsensusScore.list('-scored_at', 200).catch(() => allScores);
     }
 
-    const [allScores, allAISignals] = await Promise.all([
+    const consensusMap = {};
     for (const cs of allScores) {
       if (!consensusMap[cs.symbol]) consensusMap[cs.symbol] = cs;
     }
