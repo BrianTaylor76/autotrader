@@ -21,6 +21,8 @@ function setCached(sym, data) {
 
 const MARKETS = ["All","S&P 500","NASDAQ 100","ETF","Crypto","Small Cap"];
 
+const listRef = React.useRef(null);
+
 export default function StockBrowser({ onSelect }) {
   const [search, setSearch] = useState("");
   const [market, setMarket] = useState("All");
@@ -31,6 +33,7 @@ export default function StockBrowser({ onSelect }) {
   const [prices, setPrices] = useState({});
   const [loadingSyms, setLoadingSyms] = useState(new Set());
   const fetchingRef = useRef(new Set());
+  const listScrollRef = useRef(null);
 
   const filtered = useMemo(() => {
     let list = ALL_STOCKS;
@@ -57,6 +60,11 @@ export default function StockBrowser({ onSelect }) {
   const pageStocks = useMemo(() => filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE), [filtered, page]);
 
   useEffect(() => { setPage(0); }, [search, market, underHundred, fractionalOnly, sort]);
+
+  // Scroll list to top when page changes
+  useEffect(() => {
+    if (listScrollRef.current) listScrollRef.current.scrollTop = 0;
+  }, [page]);
 
   useEffect(() => {
     const toFetch = pageStocks.filter(s => !getCached(s.symbol) && !fetchingRef.current.has(s.symbol));
@@ -127,54 +135,10 @@ export default function StockBrowser({ onSelect }) {
         </div>
       </div>
 
-      {/* Stock list */}
-      <div className="flex-1 overflow-y-auto min-h-0">
-        {pageStocks.map(stock => {
-          const d = prices[stock.symbol];
-          const isLoading = loadingSyms.has(stock.symbol);
-          const up = (d?.change_pct || 0) >= 0;
-          const isHot = Math.abs(d?.change_pct || 0) > 3 || (d?.vol_ratio || 0) > 2;
-          return (
-            <button
-              key={stock.symbol}
-              onClick={() => onSelect({ ...stock, ...(d || {}), name: stock.name })}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-accent/30 transition-colors text-left"
-            >
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-mono font-semibold text-foreground text-xs">{stock.symbol}</span>
-                  {isHot && <Flame className="w-3 h-3 text-orange-400" />}
-                </div>
-                <p className="text-[10px] text-muted-foreground truncate">{stock.name}</p>
-              </div>
-              <div className="text-right shrink-0 min-w-[60px]">
-                {isLoading && !d ? (
-                  <div className="space-y-1">
-                    <div className="h-2.5 w-12 bg-secondary animate-pulse rounded ml-auto" />
-                    <div className="h-2 w-8 bg-secondary animate-pulse rounded ml-auto" />
-                  </div>
-                ) : d?.price ? (
-                  <>
-                    <p className="font-mono text-xs text-foreground font-medium">${d.price < 1 ? d.price.toFixed(4) : d.price.toFixed(2)}</p>
-                    <p className={`text-[10px] font-mono ${up ? "text-primary" : "text-destructive"}`}>{up ? "+" : ""}{d.change_pct?.toFixed(2)}%</p>
-                  </>
-                ) : (
-                  <p className="text-[10px] text-muted-foreground">—</p>
-                )}
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between pt-2 border-t border-border mt-2 shrink-0">
-          <button disabled={page === 0} onClick={() => setPage(p => p - 1)} className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-40 px-2 py-1 rounded bg-secondary">Prev</button>
-          <span className="text-[10px] text-muted-foreground">{page + 1}/{totalPages} · {filtered.length}</span>
-          <button disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)} className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-40 px-2 py-1 rounded bg-secondary">Next</button>
-        </div>
-      )}
-    </div>
-  );
-}
+      {/* Stock list + pagination inside scroll container */}
+      <div
+        ref={listScrollRef}
+        className="flex-1 overflow-y-auto min-h-0"
+        style={{ scrollPaddingBottom: "120px" }}
+      >
+        <div style={{ paddingBottom: "120px" }}>
