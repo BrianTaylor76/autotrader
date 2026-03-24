@@ -116,7 +116,8 @@ export default function ResearchPanel({ stock, savedResearch, isModal }) {
 
   const riskScore = calcRiskScore(stock);
   const up = (stock.change_pct || 0) >= 0;
-  const isFractional = assetInfo?.fractionable ?? stock.is_fractional;
+  const isCrypto = /^[A-Z]+USD$/.test(stock.symbol) || stock.symbol.includes("/");
+  const isFractional = isCrypto ? true : (assetInfo?.fractionable ?? stock.is_fractional);
 
   return (
     <div className="space-y-5 pb-8">
