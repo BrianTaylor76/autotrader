@@ -48,7 +48,10 @@ export default function Sidebar() {
 
       <nav className="flex-1 p-4 space-y-1">
         {navItems.map((item) => {
-          const isActive = location.pathname === item.path;
+          const [itemPath, itemQuery] = item.path.split("?");
+          const isActive = itemQuery
+            ? location.pathname === itemPath && location.search === `?${itemQuery}`
+            : location.pathname === item.path && !location.search;
           return (
             <Link
               key={item.path}
