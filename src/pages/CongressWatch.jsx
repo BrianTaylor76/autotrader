@@ -66,16 +66,16 @@ export default function CongressWatch() {
     });
   }
 
-  const selectedMemberTrades = useMemo(() =>
-    selectedMember ? trades.filter(t => t.representative === selectedMember) : [],
-    [trades, selectedMember]
-  );
-
   const { data: trades = [], isLoading, isFetching } = useQuery({
     queryKey: ["congress_trades"],
     queryFn: () => base44.entities.CongressTrade.list("-disclosure_date", 500),
     staleTime: 30000,
   });
+
+  const selectedMemberTrades = useMemo(() =>
+    selectedMember ? trades.filter(t => t.representative === selectedMember) : [],
+    [trades, selectedMember]
+  );
 
   const { data: consensusScores = [] } = useQuery({
     queryKey: ["consensus_scores"],
