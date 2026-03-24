@@ -13,16 +13,33 @@ Deno.serve(async (req) => {
   try {
     const { symbol = 'SPY', timeframe = '5Min', limit = 78 } = await req.json().catch(() => ({}));
 
-    const url = `${ALPACA_DATA_URL}/v2/stocks/${symbol}/bars?timeframe=${timeframe}&limit=${limit}&feed=iex&sort=asc`;
-    const res = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
+    const isCrypto = /^[A-Z]+USD$/.test(symbol) || symbol.includes('/');
+    let rawBars = [];
 
-    if (!res.ok) {
-      const err = await res.text();
-      return Response.json({ error: `Alpaca error: ${err}` }, { status: res.status });
+    if (isCrypto) {
+      // Normalize to slash format: AVAXUSD → AVAX/USD
+      const slashSym = symbol.includes('/') ? symbol : symbol.replace(/^([A-Z]+)(USD)$/, '$1/USD');
+      const encodedSym = encodeURIComponent(slashSym);
+      const url = `${ALPACA_DATA_URL}/v2/crypto/us/bars?symbols=${encodedSym}&timeframe=${timeframe}&limit=${limit}&sort=asc`;
+      const res = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
+      if (!res.ok) {
+        const err = await res.text();
+        return Response.json({ error: `Alpaca crypto error: ${err}` }, { status: res.status });
+      }
+      const data = await res.json();
+      rawBars = data.bars?.[slashSym] || [];
+    } else {
+      const url = `${ALPACA_DATA_URL}/v2/stocks/${symbol}/bars?timeframe=${timeframe}&limit=${limit}&feed=iex&sort=asc`;
+      const res = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
+      if (!res.ok) {
+        const err = await res.text();
+        return Response.json({ error: `Alpaca error: ${err}` }, { status: res.status });
+      }
+      const data = await res.json();
+      rawBars = data.bars || [];
     }
 
-    const data = await res.json();
-    const bars = (data.bars || []).map((b) => ({
+    const bars = rawBars.map((b) => ({
       date: new Date(b.t).getTime(),
       time: new Date(b.t).getTime(),
       open: b.o,
