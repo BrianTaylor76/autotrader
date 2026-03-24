@@ -67,8 +67,11 @@ async function getPositions() {
   return Array.isArray(data) ? data : [];
 }
 
-async function placeOrder(symbol, side, qty) {
-  const body = JSON.stringify({ symbol, qty, side, type: 'market', time_in_force: 'day' });
+async function placeOrder(symbol, side, qty, notional) {
+  const orderBody = side === 'buy'
+    ? { symbol, notional: parseFloat(notional).toFixed(2), side, type: 'market', time_in_force: 'day' }
+    : { symbol, qty, side, type: 'market', time_in_force: 'day' };
+  const body = JSON.stringify(orderBody);
   const res = await fetch(`${ALPACA_BASE_URL}/v2/orders`, { method: 'POST', headers: alpacaHeaders, body });
   if (!res.ok) throw new Error(`Order failed for ${symbol} ${side}: ${await res.text()}`);
   return await res.json();
@@ -109,28 +112,27 @@ async function runSimpleStrategy(base44, symbol, prices, fast_ma_period, slow_ma
       });
       return { symbol, action: 'hold', strategy: strategyTag, message: `AI veto blocked` };
     }
-    const qty = Math.floor(max_per_trade / latestPrice);
-    if (qty < 1) return { symbol, message: 'Price too high for max_per_trade limit' };
+    if (max_per_trade < 1) return { symbol, message: 'max_per_trade must be at least $1' };
     try {
-      await placeOrder(symbol, 'buy', qty);
-      const totalValue = qty * latestPrice;
+      await placeOrder(symbol, 'buy', null, max_per_trade);
+      const totalValue = max_per_trade;
       const aiNote = aiSignal ? ` | AI: ${aiSignal.overall_verdict}` : '';
       await base44.asServiceRole.entities.Trade.create({
-        symbol, action: 'buy', quantity: qty, price: latestPrice, total_value: totalValue,
+        symbol, action: 'buy', quantity: 0, price: latestPrice, total_value: totalValue,
         status: 'executed', strategy: strategyTag,
-        reason: `[${strategyTag}] Golden cross | ${scoreLabel}${aiNote}`,
+        reason: `[${strategyTag}] Golden cross | ${scoreLabel}${aiNote} | notional $${totalValue}`,
         executed_at: new Date().toISOString(),
       });
       await base44.asServiceRole.entities.Position.create({
-        symbol, quantity: qty, avg_entry_price: latestPrice, current_price: latestPrice,
+        symbol, quantity: totalValue / latestPrice, avg_entry_price: latestPrice, current_price: latestPrice,
         market_value: totalValue, unrealized_pl: 0, unrealized_pl_pct: 0,
       });
       await sendPush(base44, {
         title: `AutoTrader: BUY Executed`,
-        message: `${qty} shares of ${symbol} bought at $${latestPrice.toFixed(2)}. Total: $${totalValue.toFixed(2)}. Strategy: ${strategyTag}`,
+        message: `$${totalValue} notional of ${symbol} bought at ~$${latestPrice.toFixed(2)}. Strategy: ${strategyTag}`,
         priority: 0, sound: 'cashregister', trigger_type: 'trade_executed', symbol, value: String(totalValue.toFixed(2)),
       });
-      return { symbol, action: 'buy', qty, price: latestPrice, strategy: strategyTag, consensus_score: consensusScore };
+      return { symbol, action: 'buy', notional: totalValue, price: latestPrice, strategy: strategyTag, consensus_score: consensusScore };
     } catch (e) {
       await base44.asServiceRole.entities.Trade.create({
         symbol, action: 'buy', quantity: 0, price: latestPrice, total_value: 0,
@@ -214,28 +216,27 @@ async function runConsensusStrategy(base44, symbol, prices, fast_ma_period, slow
       });
       return { symbol, action: 'hold', strategy: strategyTag, message: `AI veto blocked` };
     }
-    const qty = Math.floor(max_per_trade / latestPrice);
-    if (qty < 1) return { symbol, message: 'Price too high for max_per_trade limit' };
+    if (max_per_trade < 1) return { symbol, message: 'max_per_trade must be at least $1' };
     try {
-      await placeOrder(symbol, 'buy', qty);
-      const totalValue = qty * latestPrice;
+      await placeOrder(symbol, 'buy', null, max_per_trade);
+      const totalValue = max_per_trade;
       const aiNote = aiSignal ? ` | AI: ${aiSignal.overall_verdict}` : '';
       await base44.asServiceRole.entities.Trade.create({
-        symbol, action: 'buy', quantity: qty, price: latestPrice, total_value: totalValue,
+        symbol, action: 'buy', quantity: 0, price: latestPrice, total_value: totalValue,
         status: 'executed', strategy: strategyTag,
-        reason: `[${strategyTag}] Golden cross confirmed by ${scoreLabel}${aiNote}`,
+        reason: `[${strategyTag}] Golden cross confirmed by ${scoreLabel}${aiNote} | notional $${totalValue}`,
         executed_at: new Date().toISOString(),
       });
       await base44.asServiceRole.entities.Position.create({
-        symbol, quantity: qty, avg_entry_price: latestPrice, current_price: latestPrice,
+        symbol, quantity: totalValue / latestPrice, avg_entry_price: latestPrice, current_price: latestPrice,
         market_value: totalValue, unrealized_pl: 0, unrealized_pl_pct: 0,
       });
       await sendPush(base44, {
         title: `AutoTrader: BUY Executed`,
-        message: `${qty} shares of ${symbol} bought at $${latestPrice.toFixed(2)}. Total: $${totalValue.toFixed(2)}. Strategy: ${strategyTag}`,
+        message: `$${totalValue} notional of ${symbol} bought at ~$${latestPrice.toFixed(2)}. Strategy: ${strategyTag}`,
         priority: 0, sound: 'cashregister', trigger_type: 'trade_executed', symbol, value: String(totalValue.toFixed(2)),
       });
-      return { symbol, action: 'buy', qty, price: latestPrice, score, strategy: strategyTag };
+      return { symbol, action: 'buy', notional: totalValue, price: latestPrice, score, strategy: strategyTag };
     } catch (e) {
       await base44.asServiceRole.entities.Trade.create({
         symbol, action: 'buy', quantity: 0, price: latestPrice, total_value: 0,
@@ -317,12 +318,18 @@ Deno.serve(async (req) => {
       return Response.json({ message: `Daily loss limit of $${daily_loss_limit} hit.`, daily_loss: dailyLoss });
     }
 
-    const [allScores, allAISignals] = await Promise.all([
-      base44.asServiceRole.entities.ConsensusScore.list('-scored_at', 200),
-      base44.asServiceRole.entities.AISignal.list('-analyzed_at', 200),
-    ]);
+    // Auto-refresh stale consensus scores (older than 24 hours)
+    const latestScore = allScores[0];
+    const staleThreshold = Date.now() - 24 * 60 * 60 * 1000;
+    const isStale = !latestScore || new Date(latestScore.scored_at).getTime() < staleThreshold;
+    if (isStale) {
+      await base44.functions.invoke('scoreConsensus', {}).catch(() => {});
+      await base44.asServiceRole.entities.StrategySettings.update(settings.id, {
+        consensus_refreshed_at: new Date().toISOString(),
+      }).catch(() => {});
+    }
 
-    const consensusMap = {};
+    const [allScores, allAISignals] = await Promise.all([
     for (const cs of allScores) {
       if (!consensusMap[cs.symbol]) consensusMap[cs.symbol] = cs;
     }
