@@ -44,6 +44,7 @@ export default function ResearchPanel({ stock, savedResearch, isModal }) {
   const [congressLoaded, setCongressLoaded] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [stage, setStage] = useState(0);
+  const [showChart, setShowChart] = useState(false);
 
   useEffect(() => {
     if (!stock) return;
@@ -52,21 +53,21 @@ export default function ResearchPanel({ stock, savedResearch, isModal }) {
     setAssetInfo(null);
     setCongressTrades([]);
     setCongressLoaded(false);
+    setShowChart(false);
 
-    // Fetch asset info
-    base44.functions.invoke("fetchStockData", { action: "asset", symbol: stock.symbol })
-      .then(res => setAssetInfo(res.data))
-      .catch(() => setAssetInfo({ fractionable: false }));
+    const isCrypto = /^[A-Z]+USD$/.test(stock.symbol) || stock.symbol.includes("/");
 
-    // Fetch congress trades from entity directly
-    const ninetyDaysAgo = new Date(Date.now() - 90 * 86400000).toISOString().split("T")[0];
-    base44.entities.CongressTrade.filter({ symbol: stock.symbol })
-      .then(trades => {
-        const recent = trades.filter(t => (t.disclosure_date || t.transaction_date || "") >= ninetyDaysAgo);
-        setCongressTrades(recent);
-      })
-      .catch(() => setCongressTrades([]))
-      .finally(() => setCongressLoaded(true));
+    // Crypto: mark fractional immediately without API call
+    if (isCrypto) {
+      setAssetInfo({ fractionable: true, exchange: "Crypto" });
+    } else {
+      base44.functions.invoke("fetchStockData", { action: "asset", symbol: stock.symbol })
+        .then(res => setAssetInfo(res.data))
+        .catch(() => setAssetInfo({ fractionable: false }));
+    }
+
+    // Delay chart fetch by 200ms to stagger API calls
+    const chartTimer = setTimeout(() => setShowChart(true), 200);
 
     // Load saved research if provided
     if (savedResearch) {
@@ -78,6 +79,8 @@ export default function ResearchPanel({ stock, savedResearch, isModal }) {
         news: savedResearch.news_links || [],
       });
     }
+
+    return () => clearTimeout(chartTimer);
   }, [stock?.symbol]);
 
   async function handleAnalyze() {
@@ -149,10 +152,10 @@ export default function ResearchPanel({ stock, savedResearch, isModal }) {
         </div>
       </div>
 
-      {/* Chart */}
+      {/* Chart — lazy loaded after 200ms */}
       <div className="bg-card border border-border rounded-xl p-5">
         <h4 className="text-sm font-semibold text-foreground mb-3">6-Month Chart</h4>
-        <StockChart symbol={stock.symbol} />
+        {showChart ? <StockChart symbol={stock.symbol} /> : <div className="h-64 bg-secondary/30 animate-pulse rounded-xl" />}
       </div>
 
       {/* Analyze Button */}
@@ -187,14 +190,14 @@ export default function ResearchPanel({ stock, savedResearch, isModal }) {
         </div>
       )}
 
-      {/* Congressional Activity */}
-      {(analysis || congressLoaded) && (
+      {/* Congressional Activity — only when analysis is ready */}
+      {analysis && (
         <div className="bg-card border border-border rounded-xl p-5">
           <CongressActivity trades={congressTrades} loaded={congressLoaded} />
         </div>
       )}
 
-      {/* News Feed */}
+      {/* News Feed — only when analysis is ready */}
       {analysis && (
         <div className="bg-card border border-border rounded-xl p-5">
           <NewsFeed symbol={stock.symbol} />
