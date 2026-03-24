@@ -30,10 +30,21 @@ export default function Dashboard() {
 
   const toggleBot = useMutation({
     mutationFn: async () => {
-      if (!currentSettings?.id) throw new Error("Settings not loaded yet");
-      await base44.entities.StrategySettings.update(currentSettings.id, {
-        bot_enabled: !currentSettings.bot_enabled,
-      });
+      if (currentSettings?.id) {
+        await base44.entities.StrategySettings.update(currentSettings.id, {
+          bot_enabled: !currentSettings.bot_enabled,
+        });
+      } else {
+        await base44.entities.StrategySettings.create({
+          bot_enabled: true,
+          watchlist: ["SPY", "QQQ", "AAPL", "TSLA"],
+          max_per_trade: 500,
+          daily_loss_limit: 200,
+          fast_ma_period: 5,
+          slow_ma_period: 13,
+          strategy_mode: "simple",
+        });
+      }
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["settings"] }),
     onError: (err) => console.error("Toggle bot failed:", err.message),
@@ -105,7 +116,7 @@ export default function Dashboard() {
       <BotStatusToggle
         enabled={currentSettings?.bot_enabled || false}
         onToggle={() => toggleBot.mutate()}
-        loading={toggleBot.isPending || !currentSettings}
+        loading={toggleBot.isPending}
       />
 
       <ChartWidget
