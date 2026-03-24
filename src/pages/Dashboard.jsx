@@ -7,6 +7,7 @@ import PositionsTable from "../components/dashboard/PositionsTable";
 import RecentTrades from "../components/dashboard/RecentTrades";
 import ChartWidget from "../components/chart/ChartWidget";
 import { Wallet, TrendingUp, BarChart3, Zap } from "lucide-react";
+import TradingModeToggle from "../components/dashboard/TradingModeToggle";
 
 export default function Dashboard() {
   const queryClient = useQueryClient();
@@ -100,6 +101,8 @@ export default function Dashboard() {
           />
         </div>
       )}
+
+      <TradingModeToggle />
 
       <BotStatusToggle
         enabled={currentSettings?.bot_enabled || false}

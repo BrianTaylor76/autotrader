@@ -35,6 +35,11 @@ function TradeCard({ trade }) {
                   {trade.strategy}
                 </Badge>
               )}
+              {trade.is_live && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-destructive/50 text-destructive bg-destructive/10">
+                  LIVE
+                </Badge>
+              )}
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
               {trade.quantity} shares @ ${trade.price?.toFixed(2)} · {trade.executed_at ? format(new Date(trade.executed_at), "MMM d, h:mm a") : "—"}
@@ -183,11 +188,18 @@ export default function TradeHistory() {
                           }`}>{trade.status}</Badge>
                         </TableCell>
                         <TableCell>
-                          {trade.strategy ? (
-                            <Badge variant="outline" className={`text-[10px] ${trade.strategy === "Consensus" ? "border-chart-3/40 text-chart-3" : "border-chart-4/40 text-chart-4"}`}>
-                              {trade.strategy}
-                            </Badge>
-                          ) : <span className="text-muted-foreground text-xs">—</span>}
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {trade.strategy ? (
+                              <Badge variant="outline" className={`text-[10px] ${trade.strategy === "Consensus" ? "border-chart-3/40 text-chart-3" : "border-chart-4/40 text-chart-4"}`}>
+                                {trade.strategy}
+                              </Badge>
+                            ) : <span className="text-muted-foreground text-xs">—</span>}
+                            {trade.is_live && (
+                              <Badge variant="outline" className="text-[10px] border-destructive/50 text-destructive bg-destructive/10">
+                                LIVE
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">{trade.reason || "—"}</TableCell>
                       </TableRow>
