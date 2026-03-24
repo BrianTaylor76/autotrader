@@ -44,7 +44,16 @@ export default function StockChart({ symbol }) {
         }
         setChartData(data);
       })
-      .catch(e => setError(e.message))
+      .catch(e => {
+        const msg = e.message || "";
+        if (msg.includes("429") || msg.includes("Rate") || msg.includes("rate")) {
+          setError("Rate limited — retrying shortly");
+        } else if (msg.includes("No price")) {
+          setError("No price data available");
+        } else {
+          setError("Chart temporarily unavailable");
+        }
+      })
       .finally(() => setLoading(false));
   }, [symbol]);
 
@@ -177,9 +186,12 @@ export default function StockChart({ symbol }) {
 
   if (loading) return <div className="h-64 bg-secondary/30 animate-pulse rounded-xl" />;
   if (error) return (
-    <div className="h-40 flex flex-col items-center justify-center gap-2">
-      <p className="text-sm text-destructive">{error}</p>
-      <button onClick={() => { setError(null); setLoading(true); }} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"><RefreshCw className="w-3 h-3" /> Retry</button>
+    <div className="h-40 flex flex-col items-center justify-center gap-3 bg-secondary/20 rounded-xl">
+      <p className="text-sm text-muted-foreground">{error} — tap retry</p>
+      <button
+        onClick={() => { setError(null); setLoading(true); }}
+        className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20 transition-colors"
+      ><RefreshCw className="w-3 h-3" /> Retry</button>
     </div>
   );
 
