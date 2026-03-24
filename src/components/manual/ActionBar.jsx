@@ -69,7 +69,7 @@ export default function ActionBar({ stock, analysis, congressTrades, news, onWat
 
   return (
     <>
-      <div className="flex flex-col sm:flex-row flex-wrap gap-2 pt-4 border-t border-border">
+      <div className="flex flex-col sm:flex-row flex-wrap gap-2 pt-4 border-t border-border" style={{ paddingBottom: "env(safe-area-inset-bottom, 20px)" }}>
         <Button variant="outline" className="border-border gap-1.5 h-12 sm:h-9 text-sm" onClick={handleAddWatchlist}>
           <Bookmark className="w-4 h-4" /> Add to Watchlist
         </Button>
