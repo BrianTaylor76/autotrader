@@ -14,6 +14,7 @@ import Learn from '@/pages/Learn';
 import CongressWatch from '@/pages/CongressWatch';
 import Backtest from '@/pages/Backtest';
 import ManualMode from '@/pages/ManualMode';
+import Watchlist from '@/pages/Watchlist';
 
 function App() {
   return (
@@ -32,6 +33,7 @@ function App() {
             <Route path="/CongressWatch" element={<CongressWatch />} />
             <Route path="/Backtest" element={<Backtest />} />
             <Route path="/ManualMode" element={<ManualMode />} />
+            <Route path="/Watchlist" element={<Watchlist />} />
           </Route>
         </Routes>
       </Router>

@@ -3,6 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { getAllStocks } from "@/utils/stockLists";
 import { Input } from "@/components/ui/input";
 import { Search, Flame, X, BookmarkCheck } from "lucide-react";
+import { normalizeWatchlist, getWatchlistSymbols, removeFromWatchlist } from "@/utils/watchlist";
 
 const ALL_STOCKS = getAllStocks();
 const PAGE_SIZE = 20;
@@ -49,13 +50,15 @@ export default function StockBrowser({ onSelect, watchlist = [], onWatchlistChan
 
   const isWatchlistTab = market === "My Watchlist";
 
+  const watchlistSymbols = useMemo(() => getWatchlistSymbols(watchlist), [watchlist]);
+
   // Watchlist stocks: map from symbol → stock info (with fallback for unlisted symbols)
   const watchlistStocks = useMemo(() => {
-    return watchlist.map(sym => {
+    return watchlistSymbols.map(sym => {
       const found = ALL_STOCKS.find(s => s.symbol === sym);
       return found || { symbol: sym, name: sym, market: "Custom" };
     });
-  }, [watchlist]);
+  }, [watchlistSymbols]);
 
   const filtered = useMemo(() => {
     if (isWatchlistTab) return watchlistStocks;
@@ -128,7 +131,7 @@ export default function StockBrowser({ onSelect, watchlist = [], onWatchlistChan
     const settings = await base44.entities.StrategySettings.list("-created_date", 1);
     const current = settings[0];
     if (current) {
-      const newList = (current.watchlist || []).filter(s => s !== sym);
+      const newList = removeFromWatchlist(current.watchlist || [], sym);
       await base44.entities.StrategySettings.update(current.id, { watchlist: newList });
       onWatchlistChange?.(newList);
     }
@@ -174,7 +177,7 @@ export default function StockBrowser({ onSelect, watchlist = [], onWatchlistChan
           >
             <BookmarkCheck className="w-3 h-3" />
             My Watchlist
-            {watchlist.length > 0 && (
+            {watchlistSymbols.length > 0 && (
               <span className={`px-1 rounded-full text-[9px] font-bold ${market === "My Watchlist" ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"}`}>
                 {watchlist.length}
               </span>
@@ -226,7 +229,7 @@ export default function StockBrowser({ onSelect, watchlist = [], onWatchlistChan
           const isLoading = loadingSyms.has(stock.symbol);
           const up = (d?.change_pct || 0) >= 0;
           const isHot = Math.abs(d?.change_pct || 0) > 3 || (d?.vol_ratio || 0) > 2;
-          const inWatchlist = watchlist.includes(stock.symbol);
+          const inWatchlist = watchlistSymbols.includes(stock.symbol);
 
           return (
             <div key={stock.symbol} className="flex items-center gap-1">

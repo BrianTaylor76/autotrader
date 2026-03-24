@@ -7,7 +7,7 @@ function calcMA(closes, period, idx) {
   return closes.slice(idx - period + 1, idx + 1).reduce((s, v) => s + v, 0) / period;
 }
 
-export default function StockChart({ symbol }) {
+export default function StockChart({ symbol, addedAt }) {
   const [chartData, setChartData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -139,6 +139,34 @@ export default function StockChart({ symbol }) {
     drawMA("ma5", "hsl(142 70% 45%)");
     drawMA("ma13", "#3b82f6");
 
+    // Added-to-watchlist marker
+    if (addedAt) {
+      const addedDate = addedAt.split("T")[0];
+      const addedIdx = chartData.findIndex(d => d.date >= addedDate);
+      if (addedIdx !== -1) {
+        const ax = xi(addedIdx);
+        // Shaded region
+        ctx.fillStyle = "rgba(74,222,128,0.05)";
+        ctx.fillRect(ax, PAD.top, W - PAD.right - ax, priceChartH);
+        // Dashed vertical line
+        ctx.save();
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = "hsl(142 70% 45%)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(ax, PAD.top);
+        ctx.lineTo(ax, PRICE_H - 4);
+        ctx.stroke();
+        ctx.restore();
+        // Label
+        ctx.fillStyle = "hsl(142 70% 45%)";
+        ctx.font = "9px monospace";
+        ctx.textAlign = "left";
+        const labelX = Math.min(ax + 3, W - 80);
+        ctx.fillText("\uD83D\uDCCC Added " + addedDate.slice(5), labelX, PAD.top + 10);
+      }
+    }
+
     // X axis dates
     ctx.fillStyle = "rgba(255,255,255,0.4)";
     ctx.font = "9px monospace";
@@ -195,6 +223,20 @@ export default function StockChart({ symbol }) {
     </div>
   );
 
+  // Since-added stat
+  const sinceAddedStat = React.useMemo(() => {
+    if (!addedAt || !chartData.length) return null;
+    const addedDate = addedAt.split("T")[0];
+    const today = new Date().toISOString().split("T")[0];
+    if (addedDate === today) return { isToday: true };
+    const addedBar = chartData.find(d => d.date >= addedDate);
+    const currentBar = chartData[chartData.length - 1];
+    if (!addedBar || !currentBar) return null;
+    const diff = currentBar.c - addedBar.c;
+    const pct = (diff / addedBar.c) * 100;
+    return { diff, pct, from: addedBar.c, up: diff >= 0, isToday: false };
+  }, [addedAt, chartData]);
+
   return (
     <div ref={containerRef}>
       <canvas
@@ -202,6 +244,14 @@ export default function StockChart({ symbol }) {
         className="w-full rounded-lg block"
         style={{ imageRendering: "auto" }}
       />
+      {sinceAddedStat && (
+        <p className={`text-xs mt-2 ${sinceAddedStat.isToday ? "text-muted-foreground" : sinceAddedStat.up ? "text-primary" : "text-destructive"}`}>
+          {sinceAddedStat.isToday
+            ? "📌 Added today"
+            : `📌 Since added: ${sinceAddedStat.up ? "+" : ""}$${sinceAddedStat.diff.toFixed(2)} (${sinceAddedStat.up ? "+" : ""}${sinceAddedStat.pct.toFixed(2)}%) from $${sinceAddedStat.from.toFixed(2)}`
+          }
+        </p>
+      )}
       {crossover && (
         <p className={`text-xs mt-2 px-3 py-1.5 rounded-lg border inline-block ${crossover.type === "golden" ? "bg-primary/10 text-primary border-primary/20" : "bg-destructive/10 text-destructive border-destructive/20"}`}>
           {crossover.type === "golden" ? "🟢 Golden cross" : "🔴 Death cross"} detected — {crossover.date}

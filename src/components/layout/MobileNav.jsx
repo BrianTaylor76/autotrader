@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, History, Settings, TrendingUp, LineChart, Radio, BookOpen, Landmark, FlaskConical, Monitor, Menu, X } from "lucide-react";
+import { LayoutDashboard, History, Settings, TrendingUp, LineChart, Radio, BookOpen, Landmark, FlaskConical, Monitor, Menu, X, BookmarkCheck } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 
@@ -12,9 +12,12 @@ const ALL_NAV_ITEMS = [
   { path: "/StrategySettings", label: "Strategy", icon: Settings },
   { path: "/CongressWatch", label: "Congress", icon: Landmark },
   { path: "/ManualMode", label: "Manual", icon: Monitor },
+  { path: "/Watchlist", label: "Watchlist", icon: BookmarkCheck },
   { path: "/Backtest", label: "Backtest", icon: FlaskConical },
   { path: "/Learn", label: "Learn", icon: BookOpen },
 ];
+
+const BOTTOM_NAV = ALL_NAV_ITEMS.slice(0, 6);
 
 export default function MobileNav() {
   const location = useLocation();
@@ -91,7 +94,7 @@ export default function MobileNav() {
 
       {/* Bottom tab bar */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-card border-t border-border flex items-center z-40 pb-safe pt-2 px-0" style={{ height: 'max(64px, calc(env(safe-area-inset-bottom) + 64px))' }}>
-        {navItems.map((item) => {
+        {BOTTOM_NAV.map((item) => {
           const isActive = location.pathname === item.path;
           return (
             <Link

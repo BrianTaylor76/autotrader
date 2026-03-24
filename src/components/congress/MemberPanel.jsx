@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import { differenceInDays, parseISO } from "date-fns";
+import { addToWatchlist, getWatchlistSymbols } from "@/utils/watchlist";
 import { X, Star, TrendingUp, BookmarkPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
@@ -103,11 +104,11 @@ export default function MemberPanel({ member, trades, isWatched, onToggleWatch, 
     const settings = await base44.entities.StrategySettings.list("-created_date", 1);
     const current = settings[0];
     if (!current) { toast({ title: "No strategy settings found", variant: "destructive" }); setCopying(false); return; }
-    const watchlist = current.watchlist || [];
-    if (watchlist.includes(latestBuy.symbol)) {
+    const wl = current.watchlist || [];
+    if (getWatchlistSymbols(wl).includes(latestBuy.symbol)) {
       toast({ title: `${latestBuy.symbol} already in watchlist` });
     } else {
-      await base44.entities.StrategySettings.update(current.id, { watchlist: [...watchlist, latestBuy.symbol] });
+      await base44.entities.StrategySettings.update(current.id, { watchlist: addToWatchlist(wl, latestBuy.symbol) });
       toast({ title: `${latestBuy.symbol} added to AutoTrader watchlist` });
     }
     setCopying(false);

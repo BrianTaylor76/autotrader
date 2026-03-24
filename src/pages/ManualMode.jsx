@@ -64,6 +64,7 @@ export default function ManualMode() {
         <StockModal
           stock={selectedStock}
           savedResearch={savedResearchToLoad}
+          watchlist={watchlist}
           onClose={handleCloseModal}
         />
 

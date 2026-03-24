@@ -4,6 +4,7 @@ import { cancelAllSpeech } from "@/hooks/useSpeech";
 import { Button } from "@/components/ui/button";
 import { Loader2, TrendingUp, TrendingDown, RefreshCw } from "lucide-react";
 import StockChart from "./StockChart";
+import { getAddedAt } from "@/utils/watchlist";
 import AIAnalysisSection from "./AIAnalysisSection";
 import CongressActivity from "./CongressActivity";
 import NewsFeed from "./NewsFeed";
@@ -37,7 +38,7 @@ function RiskBadge({ score }) {
   return <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${c}`}>Risk {score}/10</span>;
 }
 
-export default function ResearchPanel({ stock, savedResearch, isModal }) {
+export default function ResearchPanel({ stock, savedResearch, isModal, watchlist = [] }) {
   const [assetInfo, setAssetInfo] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [analyzeError, setAnalyzeError] = useState(null);
@@ -163,7 +164,7 @@ export default function ResearchPanel({ stock, savedResearch, isModal }) {
       {/* Chart — lazy loaded after 200ms */}
       <div className="bg-card border border-border rounded-xl p-5">
         <h4 className="text-sm font-semibold text-foreground mb-3">6-Month Chart</h4>
-        {showChart ? <StockChart symbol={stock.symbol} /> : <div className="h-64 bg-secondary/30 animate-pulse rounded-xl" />}
+        {showChart ? <StockChart symbol={stock.symbol} addedAt={getAddedAt(watchlist, stock.symbol)} /> : <div className="h-64 bg-secondary/30 animate-pulse rounded-xl" />}
       </div>
 
       {/* Analyze Button */}

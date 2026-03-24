@@ -3,7 +3,7 @@ import { X } from "lucide-react";
 import ResearchPanel from "./ResearchPanel";
 import { cancelAllSpeech } from "@/hooks/useSpeech";
 
-export default function StockModal({ stock, savedResearch, onClose }) {
+export default function StockModal({ stock, savedResearch, onClose, watchlist = [] }) {
   const overlayRef = useRef(null);
   const panelRef = useRef(null);
   const touchStartY = useRef(null);
@@ -86,7 +86,7 @@ export default function StockModal({ stock, savedResearch, onClose }) {
 
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto overscroll-contain px-4 pt-2 pb-6 md:px-6 md:pt-4">
-          <ResearchPanel stock={stock} savedResearch={savedResearch} isModal />
+          <ResearchPanel stock={stock} savedResearch={savedResearch} isModal watchlist={watchlist} />
         </div>
       </div>
     </div>

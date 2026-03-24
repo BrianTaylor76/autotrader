@@ -13,7 +13,7 @@ const ALL_NAV_ITEMS = [
   { path: "/ApiSettings", label: "API Keys", icon: Key },
   { path: "/CongressWatch", label: "Congress Watch", icon: Landmark },
   { path: "/ManualMode", label: "Manual Mode", icon: Monitor },
-  { path: "/ManualMode?tab=watchlist", label: "My Watchlist", icon: BookmarkCheck },
+  { path: "/Watchlist", label: "My Watchlist", icon: BookmarkCheck },
   { path: "/Backtest", label: "Backtest", icon: FlaskConical },
   { path: "/Learn", label: "Learn", icon: BookOpen },
 ];
@@ -48,10 +48,7 @@ export default function Sidebar() {
 
       <nav className="flex-1 p-4 space-y-1">
         {navItems.map((item) => {
-          const [itemPath, itemQuery] = item.path.split("?");
-          const isActive = itemQuery
-            ? location.pathname === itemPath && location.search === `?${itemQuery}`
-            : location.pathname === item.path && !location.search;
+          const isActive = location.pathname === item.path;
           return (
             <Link
               key={item.path}

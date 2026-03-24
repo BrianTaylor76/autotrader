@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { normalizeWatchlist, getWatchlistSymbols, addToWatchlist, removeFromWatchlist } from "@/utils/watchlist";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -14,7 +15,7 @@ export default function ActionBar({ stock, analysis, congressTrades, news, onWat
   const [submitting, setSubmitting] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const isInWatchlist = watchlist.includes(stock?.symbol);
+  const isInWatchlist = getWatchlistSymbols(watchlist).includes(stock?.symbol);
 
   async function handleAddWatchlist() {
     const settings = await base44.entities.StrategySettings.list("-created_date", 1);
@@ -22,10 +23,10 @@ export default function ActionBar({ stock, analysis, congressTrades, news, onWat
     if (!current) { toast({ title: "No strategy settings found", variant: "destructive" }); return; }
     const wl = current.watchlist || [];
     if (isInWatchlist) {
-      await base44.entities.StrategySettings.update(current.id, { watchlist: wl.filter(s => s !== stock.symbol) });
+      await base44.entities.StrategySettings.update(current.id, { watchlist: removeFromWatchlist(wl, stock.symbol) });
       toast({ title: `${stock.symbol} removed from watchlist` });
     } else {
-      await base44.entities.StrategySettings.update(current.id, { watchlist: [...wl, stock.symbol] });
+      await base44.entities.StrategySettings.update(current.id, { watchlist: addToWatchlist(wl, stock.symbol) });
       toast({ title: `${stock.symbol} added to watchlist` });
     }
     onWatchlistAdd?.();
