@@ -96,7 +96,12 @@ export default function ResearchPanel({ stock, savedResearch, isModal }) {
       if (res.data?.error) throw new Error(res.data.error);
       setAnalysis(res.data);
     } catch (e) {
-      setAnalyzeError(e.message);
+      const msg = e.message || "";
+      if (msg.includes("429") || msg.includes("Rate") || msg.includes("rate")) {
+        setAnalyzeError("Rate limited — please wait a moment and try again");
+      } else {
+        setAnalyzeError("Analysis temporarily unavailable — please try again");
+      }
     } finally {
       clearInterval(stageInterval);
       setAnalyzing(false);
