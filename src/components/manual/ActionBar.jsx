@@ -69,15 +69,15 @@ export default function ActionBar({ stock, analysis, congressTrades, news, onWat
 
   return (
     <>
-      <div className="flex flex-wrap gap-2 pt-4 border-t border-border">
-        <Button variant="outline" size="sm" className="border-border gap-1.5" onClick={handleAddWatchlist}>
-          <Bookmark className="w-3.5 h-3.5" /> Add to Watchlist
+      <div className="flex flex-col sm:flex-row flex-wrap gap-2 pt-4 border-t border-border">
+        <Button variant="outline" className="border-border gap-1.5 h-12 sm:h-9 text-sm" onClick={handleAddWatchlist}>
+          <Bookmark className="w-4 h-4" /> Add to Watchlist
         </Button>
-        <Button variant="outline" size="sm" className="border-border gap-1.5" onClick={() => setPaperOpen(true)}>
-          <FileText className="w-3.5 h-3.5" /> Paper Trade
+        <Button variant="outline" className="border-border gap-1.5 h-12 sm:h-9 text-sm" onClick={() => setPaperOpen(true)}>
+          <FileText className="w-4 h-4" /> Paper Trade
         </Button>
-        <Button variant="outline" size="sm" className="border-border gap-1.5" onClick={handleSaveResearch} disabled={saving}>
-          <Star className="w-3.5 h-3.5" /> {saving ? "Saving…" : "Save Research"}
+        <Button variant="outline" className="border-border gap-1.5 h-12 sm:h-9 text-sm" onClick={handleSaveResearch} disabled={saving}>
+          <Star className="w-4 h-4" /> {saving ? "Saving…" : "Save Research"}
         </Button>
       </div>
 
