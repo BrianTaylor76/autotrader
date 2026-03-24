@@ -30,21 +30,9 @@ export default function Dashboard() {
 
   const toggleBot = useMutation({
     mutationFn: async () => {
-      if (currentSettings?.id) {
-        await base44.entities.StrategySettings.update(currentSettings.id, {
-          bot_enabled: !currentSettings.bot_enabled,
-        });
-      } else {
-        await base44.entities.StrategySettings.create({
-          bot_enabled: true,
-          watchlist: ["SPY", "QQQ", "AAPL", "TSLA"],
-          max_per_trade: 500,
-          daily_loss_limit: 200,
-          fast_ma_period: 5,
-          slow_ma_period: 13,
-          strategy_mode: "simple",
-        });
-      }
+      const newState = !(currentSettings?.bot_enabled);
+      const res = await base44.functions.invoke('toggleBot', { enabled: newState });
+      return res.data;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["settings"] }),
     onError: (err) => console.error("Toggle bot failed:", err.message),
