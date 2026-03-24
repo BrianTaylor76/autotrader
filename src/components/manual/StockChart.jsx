@@ -57,6 +57,20 @@ export default function StockChart({ symbol, addedAt }) {
       .finally(() => setLoading(false));
   }, [symbol]);
 
+  // Since-added stat — must be before early returns and before useCallback
+  const sinceAddedStat = React.useMemo(() => {
+    if (!addedAt || !chartData.length) return null;
+    const addedDate = addedAt.split("T")[0];
+    const today = new Date().toISOString().split("T")[0];
+    if (addedDate === today) return { isToday: true };
+    const addedBar = chartData.find(d => d.date >= addedDate);
+    const currentBar = chartData[chartData.length - 1];
+    if (!addedBar || !currentBar) return null;
+    const diff = currentBar.c - addedBar.c;
+    const pct = (diff / addedBar.c) * 100;
+    return { diff, pct, from: addedBar.c, up: diff >= 0, isToday: false };
+  }, [addedAt, chartData]);
+
   // Draw chart on canvas — re-run when data or container width changes
   const drawChart = React.useCallback(() => {
     if (!chartData.length || !canvasRef.current || !containerRef.current) return;
@@ -202,7 +216,7 @@ export default function StockChart({ symbol, addedAt }) {
       ctx.fillStyle = d.c >= d.o ? "rgba(74,222,128,0.5)" : "rgba(239,68,68,0.5)";
       ctx.fillRect(cx - candleW / 2, volBottom - barH, candleW, barH);
     });
-  }, [chartData]);
+  }, [chartData, addedAt]);
 
   useEffect(() => {
     drawChart();
@@ -223,20 +237,6 @@ export default function StockChart({ symbol, addedAt }) {
     </div>
   );
 
-  // Since-added stat
-  const sinceAddedStat = React.useMemo(() => {
-    if (!addedAt || !chartData.length) return null;
-    const addedDate = addedAt.split("T")[0];
-    const today = new Date().toISOString().split("T")[0];
-    if (addedDate === today) return { isToday: true };
-    const addedBar = chartData.find(d => d.date >= addedDate);
-    const currentBar = chartData[chartData.length - 1];
-    if (!addedBar || !currentBar) return null;
-    const diff = currentBar.c - addedBar.c;
-    const pct = (diff / addedBar.c) * 100;
-    return { diff, pct, from: addedBar.c, up: diff >= 0, isToday: false };
-  }, [addedAt, chartData]);
-
   return (
     <div ref={containerRef}>
       <canvas
@@ -247,14 +247,14 @@ export default function StockChart({ symbol, addedAt }) {
       {sinceAddedStat && (
         <p className={`text-xs mt-2 ${sinceAddedStat.isToday ? "text-muted-foreground" : sinceAddedStat.up ? "text-primary" : "text-destructive"}`}>
           {sinceAddedStat.isToday
-            ? "📌 Added today"
-            : `📌 Since added: ${sinceAddedStat.up ? "+" : ""}$${sinceAddedStat.diff.toFixed(2)} (${sinceAddedStat.up ? "+" : ""}${sinceAddedStat.pct.toFixed(2)}%) from $${sinceAddedStat.from.toFixed(2)}`
+            ? "\uD83D\uDCCC Added today"
+            : `\uD83D\uDCCC Since added: ${sinceAddedStat.up ? "+" : ""}$${sinceAddedStat.diff.toFixed(2)} (${sinceAddedStat.up ? "+" : ""}${sinceAddedStat.pct.toFixed(2)}%) from $${sinceAddedStat.from.toFixed(2)}`
           }
         </p>
       )}
       {crossover && (
         <p className={`text-xs mt-2 px-3 py-1.5 rounded-lg border inline-block ${crossover.type === "golden" ? "bg-primary/10 text-primary border-primary/20" : "bg-destructive/10 text-destructive border-destructive/20"}`}>
-          {crossover.type === "golden" ? "🟢 Golden cross" : "🔴 Death cross"} detected — {crossover.date}
+          {crossover.type === "golden" ? "\uD83D\uDFE2 Golden cross" : "\uD83D\uDD34 Death cross"} detected — {crossover.date}
         </p>
       )}
     </div>
