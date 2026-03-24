@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { cancelAllSpeech } from "@/hooks/useSpeech";
 import { Button } from "@/components/ui/button";
 import { Loader2, TrendingUp, TrendingDown, RefreshCw } from "lucide-react";
 import StockChart from "./StockChart";
@@ -54,6 +55,7 @@ export default function ResearchPanel({ stock, savedResearch, isModal }) {
     setCongressTrades([]);
     setCongressLoaded(false);
     setShowChart(false);
+    cancelAllSpeech();
 
     const isCrypto = /^[A-Z]+USD$/.test(stock.symbol) || stock.symbol.includes("/");
 
@@ -192,7 +194,7 @@ export default function ResearchPanel({ stock, savedResearch, isModal }) {
       {/* AI Analysis */}
       {analysis && (
         <div className="bg-card border border-border rounded-xl p-5">
-          <AIAnalysisSection analysis={analysis} />
+          <AIAnalysisSection analysis={analysis} symbol={stock.symbol} />
         </div>
       )}
 
