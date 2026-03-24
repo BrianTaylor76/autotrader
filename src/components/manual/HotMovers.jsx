@@ -70,7 +70,7 @@ export default function HotMovers({ onSelect }) {
           </button>
         )}
       </div>
-      <div className="flex gap-3 overflow-x-auto pb-1">
+      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb]:rounded-full">
         {loading ? (
           Array.from({ length: 10 }).map((_, i) => (
             <div key={i} className="flex-shrink-0 w-44 h-28 bg-card border border-border rounded-xl animate-pulse" />
