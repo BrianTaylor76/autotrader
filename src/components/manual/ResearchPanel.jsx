@@ -36,7 +36,7 @@ function RiskBadge({ score }) {
   return <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${c}`}>Risk {score}/10</span>;
 }
 
-export default function ResearchPanel({ stock, savedResearch }) {
+export default function ResearchPanel({ stock, savedResearch, isModal }) {
   const [assetInfo, setAssetInfo] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [analyzeError, setAnalyzeError] = useState(null);
@@ -101,11 +101,12 @@ export default function ResearchPanel({ stock, savedResearch }) {
   }
 
   if (!stock) {
+    if (isModal) return null;
     return (
       <div className="flex flex-col items-center justify-center h-full min-h-80 text-center p-8">
         <TrendingUp className="w-12 h-12 text-muted-foreground/30 mb-4" />
         <p className="text-foreground font-medium">Select a stock to research</p>
-        <p className="text-sm text-muted-foreground mt-1">Browse the list on the left or click a hot mover card above</p>
+        <p className="text-sm text-muted-foreground mt-1">Browse the list or click a hot mover card above</p>
       </div>
     );
   }
@@ -116,7 +117,6 @@ export default function ResearchPanel({ stock, savedResearch }) {
 
   return (
     <div className="space-y-5 pb-8">
-      {/* Price Header */}
       <div className="bg-card border border-border rounded-xl p-5">
         <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
           <div>
@@ -180,32 +180,36 @@ export default function ResearchPanel({ stock, savedResearch }) {
         </div>
       )}
 
-      {/* AI Analysis + News */}
+      {/* AI Analysis */}
       {analysis && (
-        <div className="bg-card border border-border rounded-xl p-5 space-y-5">
+        <div className="bg-card border border-border rounded-xl p-5">
           <AIAnalysisSection analysis={analysis} />
+        </div>
+      )}
 
-          <div className="border-t border-border/40 pt-5">
-            <CongressActivity trades={congressTrades} loaded={congressLoaded} />
-          </div>
+      {/* Congressional Activity */}
+      {(analysis || congressLoaded) && (
+        <div className="bg-card border border-border rounded-xl p-5">
+          <CongressActivity trades={congressTrades} loaded={congressLoaded} />
+        </div>
+      )}
 
-          <div className="border-t border-border/40 pt-5">
-            <NewsFeed symbol={stock.symbol} />
-          </div>
+      {/* News Feed */}
+      {analysis && (
+        <div className="bg-card border border-border rounded-xl p-5">
+          <NewsFeed symbol={stock.symbol} />
+        </div>
+      )}
 
+      {/* Action Bar */}
+      {analysis && (
+        <div className="bg-card border border-border rounded-xl p-5">
           <ActionBar
             stock={{ ...stock, is_fractional: isFractional }}
             analysis={analysis}
             congressTrades={congressTrades}
             news={analysis.news || []}
           />
-        </div>
-      )}
-
-      {/* Congress only if no analysis yet */}
-      {!analysis && congressLoaded && congressTrades.length > 0 && (
-        <div className="bg-card border border-border rounded-xl p-5">
-          <CongressActivity trades={congressTrades} loaded={congressLoaded} />
         </div>
       )}
     </div>
