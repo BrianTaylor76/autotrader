@@ -5,8 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Search, Flame, RefreshCw } from "lucide-react";
 
 const ALL_STOCKS = getAllStocks();
-const PAGE_SIZE = 30;
-const BATCH_SIZE = 20;
+const PAGE_SIZE = 20;
+const BATCH_SIZE = 10;
 const CACHE_TTL = 60000;
 const priceCache = {};
 
@@ -84,23 +84,29 @@ export default function StockBrowser({ onSelect }) {
       batches.push(syms.slice(i, i + BATCH_SIZE));
     }
 
-    batches.forEach(batch => {
-      base44.functions.invoke("fetchStockData", { action: "snapshots", symbols: batch })
-        .then(res => {
-          const snap = res.data?.snapshots || {};
-          batch.forEach(s => {
-            const d = snap[s] || null;
-            if (d) setCached(s, d);
-            fetchingRef.current.delete(s);
-          });
-          setPrices(prev => ({ ...prev, ...snap }));
-          setLoadingSyms(prev => { const n = new Set(prev); batch.forEach(s => n.delete(s)); return n; });
-        })
-        .catch(() => {
-          batch.forEach(s => fetchingRef.current.delete(s));
-          setLoadingSyms(prev => { const n = new Set(prev); batch.forEach(s => n.delete(s)); return n; });
-        });
-    });
+    // Stagger batches with 500ms delay between them
+    batches.reduce((promise, batch, batchIdx) => {
+      return promise.then(() => new Promise(resolve => {
+        if (batchIdx > 0) setTimeout(resolve, 500);
+        else resolve();
+      })).then(() =>
+        base44.functions.invoke("fetchStockData", { action: "snapshots", symbols: batch })
+          .then(res => {
+            const snap = res.data?.snapshots || {};
+            batch.forEach(s => {
+              const d = snap[s] || null;
+              if (d) setCached(s, d);
+              fetchingRef.current.delete(s);
+            });
+            setPrices(prev => ({ ...prev, ...snap }));
+            setLoadingSyms(prev => { const n = new Set(prev); batch.forEach(s => n.delete(s)); return n; });
+          })
+          .catch(() => {
+            batch.forEach(s => fetchingRef.current.delete(s));
+            setLoadingSyms(prev => { const n = new Set(prev); batch.forEach(s => n.delete(s)); return n; });
+          })
+      );
+    }, Promise.resolve());
   }, [pageStocks]);
 
   return (
