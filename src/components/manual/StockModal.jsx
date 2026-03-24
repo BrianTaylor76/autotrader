@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import ResearchPanel from "./ResearchPanel";
+import { cancelAllSpeech } from "@/hooks/useSpeech";
 
 export default function StockModal({ stock, savedResearch, onClose }) {
   const overlayRef = useRef(null);
@@ -36,6 +37,7 @@ export default function StockModal({ stock, savedResearch, onClose }) {
   }
 
   function handleClose() {
+    cancelAllSpeech();
     setVisible(false);
     setTimeout(onClose, 300);
   }
