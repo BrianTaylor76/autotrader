@@ -13,6 +13,7 @@ export default function StockChart({ symbol }) {
   const [error, setError] = useState(null);
   const [crossover, setCrossover] = useState(null);
   const canvasRef = useRef(null);
+  const containerRef = useRef(null);
 
   useEffect(() => {
     if (!symbol) return;
@@ -49,64 +50,67 @@ export default function StockChart({ symbol }) {
 
   // Draw chart on canvas
   useEffect(() => {
-    if (!chartData.length || !canvasRef.current) return;
+    if (!chartData.length || !canvasRef.current || !containerRef.current) return;
     const canvas = canvasRef.current;
+    const W = containerRef.current.offsetWidth || 700;
+    const TOTAL_H = 340;
+    const PRICE_H = 240;
+    const VOL_H = 60;
+    const GAP = 10;
+    canvas.width = W;
+    canvas.height = TOTAL_H;
     const ctx = canvas.getContext("2d");
-    const W = canvas.width;
-    const H = canvas.height;
-    const PAD = { top: 10, right: 10, bottom: 40, left: 55 };
+    const PAD = { top: 16, right: 10, bottom: 24, left: 55 };
     const chartW = W - PAD.left - PAD.right;
-    const chartH = H - PAD.top - PAD.bottom;
+    const priceChartH = PRICE_H - PAD.top;
 
-    ctx.clearRect(0, 0, W, H);
+    ctx.clearRect(0, 0, W, TOTAL_H);
+
+    // Background
+    ctx.fillStyle = "hsl(220 18% 9%)";
+    ctx.fillRect(0, 0, W, TOTAL_H);
 
     const highs = chartData.map(d => d.h);
     const lows = chartData.map(d => d.l);
     const minP = Math.min(...lows) * 0.998;
     const maxP = Math.max(...highs) * 1.002;
     const priceRange = maxP - minP;
+    const n = chartData.length;
 
-    function px(price) { return PAD.top + chartH - ((price - minP) / priceRange) * chartH; }
-    function x(i) { return PAD.left + (i / (chartData.length - 1)) * chartW; }
+    function px(price) { return PAD.top + priceChartH - ((price - minP) / priceRange) * priceChartH; }
+    function xi(i) { return PAD.left + (n > 1 ? (i / (n - 1)) * chartW : chartW / 2); }
 
-    // Background
-    ctx.fillStyle = "hsl(220 18% 9%)";
-    ctx.fillRect(0, 0, W, H);
-
-    // Grid lines
+    // Price grid lines
     ctx.strokeStyle = "rgba(255,255,255,0.05)";
     ctx.lineWidth = 1;
     for (let i = 0; i <= 4; i++) {
-      const y = PAD.top + (i / 4) * chartH;
+      const y = PAD.top + (i / 4) * priceChartH;
       ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(W - PAD.right, y); ctx.stroke();
       const price = maxP - (i / 4) * priceRange;
       ctx.fillStyle = "rgba(255,255,255,0.4)";
       ctx.font = "10px monospace";
       ctx.textAlign = "right";
-      ctx.fillText(`$${price.toFixed(0)}`, PAD.left - 4, y + 3);
+      ctx.fillText(price >= 1000 ? `$${(price/1000).toFixed(1)}k` : `$${price.toFixed(price < 10 ? 2 : 0)}`, PAD.left - 4, y + 3);
     }
 
     // Candles
-    const candleW = Math.max(1, (chartW / chartData.length) * 0.7);
+    const candleW = Math.max(1, (chartW / n) * 0.7);
     chartData.forEach((d, i) => {
-      const xi = x(i);
+      const cx = xi(i);
       const up = d.c >= d.o;
       const color = up ? "hsl(142 70% 45%)" : "hsl(0 72% 51%)";
       ctx.strokeStyle = color;
       ctx.fillStyle = color;
-
       // Wick
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(xi, px(d.h));
-      ctx.lineTo(xi, px(d.l));
+      ctx.moveTo(cx, px(d.h));
+      ctx.lineTo(cx, px(d.l));
       ctx.stroke();
-
       // Body
       const bodyTop = px(Math.max(d.o, d.c));
       const bodyBot = px(Math.min(d.o, d.c));
-      const bodyH = Math.max(1, bodyBot - bodyTop);
-      ctx.fillRect(xi - candleW / 2, bodyTop, candleW, bodyH);
+      ctx.fillRect(cx - candleW / 2, bodyTop, candleW, Math.max(1, bodyBot - bodyTop));
     });
 
     // MA lines
@@ -117,32 +121,50 @@ export default function StockChart({ symbol }) {
       let started = false;
       chartData.forEach((d, i) => {
         if (d[key] == null) return;
-        const xi = x(i), yi = px(d[key]);
-        if (!started) { ctx.moveTo(xi, yi); started = true; }
-        else ctx.lineTo(xi, yi);
+        const x = xi(i), y = px(d[key]);
+        if (!started) { ctx.moveTo(x, y); started = true; }
+        else ctx.lineTo(x, y);
       });
       ctx.stroke();
     }
     drawMA("ma5", "hsl(142 70% 45%)");
     drawMA("ma13", "#3b82f6");
 
-    // X axis dates (show ~6 labels)
+    // X axis dates
     ctx.fillStyle = "rgba(255,255,255,0.4)";
     ctx.font = "9px monospace";
     ctx.textAlign = "center";
-    const step = Math.floor(chartData.length / 6);
-    for (let i = 0; i < chartData.length; i += step) {
+    const step = Math.max(1, Math.floor(n / 6));
+    for (let i = 0; i < n; i += step) {
       const d = chartData[i];
-      if (d) ctx.fillText(d.date.slice(5), x(i), H - PAD.bottom + 14);
+      if (d) ctx.fillText(d.date.slice(5), xi(i), PRICE_H + 2);
     }
 
     // Legend
     ctx.font = "10px monospace";
     ctx.fillStyle = "hsl(142 70% 45%)";
     ctx.textAlign = "left";
-    ctx.fillText("— MA5", PAD.left, PAD.top - 2);
+    ctx.fillText("\u2014 MA5", PAD.left, PAD.top - 4);
     ctx.fillStyle = "#3b82f6";
-    ctx.fillText("— MA13", PAD.left + 50, PAD.top - 2);
+    ctx.fillText("\u2014 MA13", PAD.left + 52, PAD.top - 4);
+
+    // ── Volume sub-chart ──
+    const volTop = PRICE_H + GAP + 16;
+    const volBottom = TOTAL_H - 4;
+    const volChartH = volBottom - volTop;
+    const maxVol = Math.max(...chartData.map(d => d.v || 0)) || 1;
+
+    ctx.fillStyle = "rgba(255,255,255,0.15)";
+    ctx.font = "9px monospace";
+    ctx.textAlign = "left";
+    ctx.fillText("VOL", PAD.left, volTop - 4);
+
+    chartData.forEach((d, i) => {
+      const cx = xi(i);
+      const barH = Math.max(1, ((d.v || 0) / maxVol) * volChartH);
+      ctx.fillStyle = d.c >= d.o ? "rgba(74,222,128,0.5)" : "rgba(239,68,68,0.5)";
+      ctx.fillRect(cx - candleW / 2, volBottom - barH, candleW, barH);
+    });
   }, [chartData]);
 
   if (loading) return <div className="h-64 bg-secondary/30 animate-pulse rounded-xl" />;
@@ -154,19 +176,17 @@ export default function StockChart({ symbol }) {
   );
 
   return (
-    <div>
+    <div ref={containerRef}>
+      <canvas
+        ref={canvasRef}
+        className="w-full rounded-lg block"
+        style={{ imageRendering: "auto" }}
+      />
       {crossover && (
-        <p className={`text-xs mb-2 px-3 py-1.5 rounded-lg border inline-block ${crossover.type === "golden" ? "bg-primary/10 text-primary border-primary/20" : "bg-destructive/10 text-destructive border-destructive/20"}`}>
+        <p className={`text-xs mt-2 px-3 py-1.5 rounded-lg border inline-block ${crossover.type === "golden" ? "bg-primary/10 text-primary border-primary/20" : "bg-destructive/10 text-destructive border-destructive/20"}`}>
           {crossover.type === "golden" ? "🟢 Golden cross" : "🔴 Death cross"} detected — {crossover.date}
         </p>
       )}
-      <canvas
-        ref={canvasRef}
-        width={canvasRef.current?.parentElement?.offsetWidth || 700}
-        height={280}
-        className="w-full rounded-lg"
-        style={{ imageRendering: "auto" }}
-      />
     </div>
   );
 }
