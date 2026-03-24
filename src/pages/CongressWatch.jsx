@@ -64,7 +64,7 @@ export default function CongressWatch() {
       localStorage.setItem("watched_congress_members", JSON.stringify(next));
       return next;
     });
-  });
+  }
 
   const selectedMemberTrades = useMemo(() =>
     selectedMember ? trades.filter(t => t.representative === selectedMember) : [],
