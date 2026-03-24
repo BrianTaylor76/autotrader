@@ -141,4 +141,52 @@ export default function StockBrowser({ onSelect }) {
         className="flex-1 overflow-y-auto min-h-0"
         style={{ scrollPaddingBottom: "120px" }}
       >
-        <div style={{ paddingBottom: "120px" }}>
+        {pageStocks.map(stock => {
+          const d = prices[stock.symbol];
+          const isLoading = loadingSyms.has(stock.symbol);
+          const up = (d?.change_pct || 0) >= 0;
+          const isHot = Math.abs(d?.change_pct || 0) > 3 || (d?.vol_ratio || 0) > 2;
+          return (
+            <button
+              key={stock.symbol}
+              onClick={() => onSelect({ ...stock, ...(d || {}), name: stock.name })}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-accent/30 transition-colors text-left"
+            >
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-mono font-semibold text-foreground text-xs">{stock.symbol}</span>
+                  {isHot && <Flame className="w-3 h-3 text-orange-400" />}
+                </div>
+                <p className="text-[10px] text-muted-foreground truncate">{stock.name}</p>
+              </div>
+              <div className="text-right shrink-0 min-w-[60px]">
+                {isLoading && !d ? (
+                  <div className="space-y-1">
+                    <div className="h-2.5 w-12 bg-secondary animate-pulse rounded ml-auto" />
+                    <div className="h-2 w-8 bg-secondary animate-pulse rounded ml-auto" />
+                  </div>
+                ) : d?.price ? (
+                  <>
+                    <p className="font-mono text-xs text-foreground font-medium">${d.price < 1 ? d.price.toFixed(4) : d.price.toFixed(2)}</p>
+                    <p className={`text-[10px] font-mono ${up ? "text-primary" : "text-destructive"}`}>{up ? "+" : ""}{d.change_pct?.toFixed(2)}%</p>
+                  </>
+                ) : (
+                  <p className="text-[10px] text-muted-foreground">—</p>
+                )}
+              </div>
+            </button>
+          );
+        })}
+
+        {/* Pagination inside scroll container */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between pt-2 border-t border-border mt-2 mb-20 md:mb-2">
+            <button disabled={page === 0} onClick={() => setPage(p => p - 1)} className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-40 px-2 py-1 rounded bg-secondary">Prev</button>
+            <span className="text-[10px] text-muted-foreground">{page + 1}/{totalPages} · {filtered.length}</span>
+            <button disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)} className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-40 px-2 py-1 rounded bg-secondary">Next</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
