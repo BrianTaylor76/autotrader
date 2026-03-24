@@ -21,8 +21,6 @@ function setCached(sym, data) {
 
 const MARKETS = ["All","S&P 500","NASDAQ 100","ETF","Crypto","Small Cap"];
 
-const listRef = React.useRef(null);
-
 export default function StockBrowser({ onSelect }) {
   const [search, setSearch] = useState("");
   const [market, setMarket] = useState("All");
