@@ -56,8 +56,8 @@ export default function CongressWatch() {
 
   const { data: trades = [], isLoading, isFetching } = useQuery({
     queryKey: ["congress_trades"],
-    queryFn: () => base44.entities.CongressTrade.list("-transaction_date", 500),
-    staleTime: 0,
+    queryFn: () => base44.entities.CongressTrade.list("-disclosure_date", 500),
+    staleTime: 30000,
   });
 
   const { data: consensusScores = [] } = useQuery({
@@ -220,10 +220,9 @@ export default function CongressWatch() {
 
       <CongressStatsRow trades={trades} />
 
-      {isLoading || isFetching ? (
+      {isLoading ? (
         <div className="space-y-2">
           {[1,2,3,4,5].map(i => <div key={i} className="h-14 bg-card rounded-lg animate-pulse border border-border" />)}
-          {isFetching && !isLoading && <p className="text-xs text-muted-foreground text-center py-1">Refreshing data…</p>}
         </div>
       ) : filtered.length === 0 ? (
         <Card className="bg-card border-border p-12 text-center">
