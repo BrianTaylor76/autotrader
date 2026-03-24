@@ -48,8 +48,8 @@ export default function StockChart({ symbol }) {
       .finally(() => setLoading(false));
   }, [symbol]);
 
-  // Draw chart on canvas
-  useEffect(() => {
+  // Draw chart on canvas — re-run when data or container width changes
+  const drawChart = React.useCallback(() => {
     if (!chartData.length || !canvasRef.current || !containerRef.current) return;
     const canvas = canvasRef.current;
     const W = containerRef.current.offsetWidth || 700;
@@ -166,6 +166,14 @@ export default function StockChart({ symbol }) {
       ctx.fillRect(cx - candleW / 2, volBottom - barH, candleW, barH);
     });
   }, [chartData]);
+
+  useEffect(() => {
+    drawChart();
+    if (!containerRef.current) return;
+    const ro = new ResizeObserver(() => drawChart());
+    ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, [drawChart]);
 
   if (loading) return <div className="h-64 bg-secondary/30 animate-pulse rounded-xl" />;
   if (error) return (
