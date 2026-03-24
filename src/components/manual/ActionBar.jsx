@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
 import { Bookmark, FileText, Star } from "lucide-react";
 
-export default function ActionBar({ stock, analysis, congressTrades, news, onWatchlistAdd }) {
+export default function ActionBar({ stock, analysis, congressTrades, news, onWatchlistAdd, watchlist = [] }) {
   const { toast } = useToast();
   const [paperOpen, setPaperOpen] = useState(false);
   const [qty, setQty] = useState(1);
@@ -14,14 +14,20 @@ export default function ActionBar({ stock, analysis, congressTrades, news, onWat
   const [submitting, setSubmitting] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  const isInWatchlist = watchlist.includes(stock?.symbol);
+
   async function handleAddWatchlist() {
     const settings = await base44.entities.StrategySettings.list("-created_date", 1);
     const current = settings[0];
     if (!current) { toast({ title: "No strategy settings found", variant: "destructive" }); return; }
-    const watchlist = current.watchlist || [];
-    if (watchlist.includes(stock.symbol)) { toast({ title: "Already in watchlist" }); return; }
-    await base44.entities.StrategySettings.update(current.id, { watchlist: [...watchlist, stock.symbol] });
-    toast({ title: `${stock.symbol} added to watchlist` });
+    const wl = current.watchlist || [];
+    if (isInWatchlist) {
+      await base44.entities.StrategySettings.update(current.id, { watchlist: wl.filter(s => s !== stock.symbol) });
+      toast({ title: `${stock.symbol} removed from watchlist` });
+    } else {
+      await base44.entities.StrategySettings.update(current.id, { watchlist: [...wl, stock.symbol] });
+      toast({ title: `${stock.symbol} added to watchlist` });
+    }
     onWatchlistAdd?.();
   }
 
@@ -70,8 +76,12 @@ export default function ActionBar({ stock, analysis, congressTrades, news, onWat
   return (
     <>
       <div className="flex flex-col sm:flex-row flex-wrap gap-2 pt-4 border-t border-border" style={{ paddingBottom: "env(safe-area-inset-bottom, 20px)" }}>
-        <Button variant="outline" className="border-border gap-1.5 h-12 sm:h-9 text-sm" onClick={handleAddWatchlist}>
-          <Bookmark className="w-4 h-4" /> Add to Watchlist
+        <Button
+          variant={isInWatchlist ? "default" : "outline"}
+          className={`border-border gap-1.5 h-12 sm:h-9 text-sm ${isInWatchlist ? "bg-primary/10 text-primary border-primary/40 hover:bg-primary/20" : ""}`}
+          onClick={handleAddWatchlist}
+        >
+          <Bookmark className="w-4 h-4" /> {isInWatchlist ? "✓ In Watchlist" : "Add to Watchlist"}
         </Button>
         <Button variant="outline" className="border-border gap-1.5 h-12 sm:h-9 text-sm" onClick={() => setPaperOpen(true)}>
           <FileText className="w-4 h-4" /> Paper Trade

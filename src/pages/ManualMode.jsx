@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { Monitor } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { base44 } from "@/api/base44Client";
 import TickerBar from "@/components/manual/TickerBar";
 import HotMovers from "@/components/manual/HotMovers";
 import StockBrowser from "@/components/manual/StockBrowser";
@@ -9,6 +11,17 @@ import SavedResearch from "@/components/manual/SavedResearch";
 export default function ManualMode() {
   const [selectedStock, setSelectedStock] = useState(null);
   const [savedResearchToLoad, setSavedResearchToLoad] = useState(null);
+  const queryClient = useQueryClient();
+
+  const { data: settings = [] } = useQuery({
+    queryKey: ["strategy_settings"],
+    queryFn: () => base44.entities.StrategySettings.list("-created_date", 1),
+  });
+  const watchlist = settings[0]?.watchlist || [];
+
+  function handleWatchlistChange() {
+    queryClient.invalidateQueries({ queryKey: ["strategy_settings"] });
+  }
 
   function handleSelectStock(stock) {
     setSelectedStock(stock);
@@ -44,7 +57,7 @@ export default function ManualMode() {
         {/* Stock Browser */}
         <div className="bg-card border border-border rounded-xl p-4 flex flex-col" style={{ maxHeight: "80vh" }}>
           <h3 className="text-sm font-semibold text-foreground mb-3">Stock Browser</h3>
-          <StockBrowser onSelect={handleSelectStock} />
+          <StockBrowser onSelect={handleSelectStock} watchlist={watchlist} onWatchlistChange={handleWatchlistChange} />
         </div>
 
         {/* Stock Research Modal */}

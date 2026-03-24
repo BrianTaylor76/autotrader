@@ -9,6 +9,8 @@ import { useToast } from "@/components/ui/use-toast";
 import WatchedSection from "@/components/congress/WatchedSection";
 import CongressStatsRow from "@/components/congress/CongressStatsRow";
 import TradeRow from "@/components/congress/TradeRow";
+import MemberPanel from "@/components/congress/MemberPanel";
+import StockModal from "@/components/manual/StockModal";
 
 const PAGE_SIZE = 50;
 
@@ -48,11 +50,26 @@ export default function CongressWatch() {
   const [sort, setSort] = useState("Most Recent");
   const [stateFilter, setStateFilter] = useState("All");
   const [expandedRow, setExpandedRow] = useState(null);
+  const [selectedMember, setSelectedMember] = useState(null);
+  const [researchStock, setResearchStock] = useState(null);
   const [page, setPage] = useState(1);
   const [jumpPage, setJumpPage] = useState("");
-  const [watchedMembers] = useState(() => {
+  const [watchedMembers, setWatchedMembers] = useState(() => {
     try { return JSON.parse(localStorage.getItem("watched_congress_members") || "[]"); } catch { return []; }
   });
+
+  function toggleWatch(name) {
+    setWatchedMembers(prev => {
+      const next = prev.includes(name) ? prev.filter(m => m !== name) : [...prev, name];
+      localStorage.setItem("watched_congress_members", JSON.stringify(next));
+      return next;
+    });
+  });
+
+  const selectedMemberTrades = useMemo(() =>
+    selectedMember ? trades.filter(t => t.representative === selectedMember) : [],
+    [trades, selectedMember]
+  );
 
   const { data: trades = [], isLoading, isFetching } = useQuery({
     queryKey: ["congress_trades"],
@@ -250,7 +267,9 @@ export default function CongressWatch() {
                     trade={trade}
                     isHot={hotSymbols.has(trade.symbol?.toUpperCase())}
                     expanded={expandedRow === (trade.id || idx)}
-                    onToggleExpand={() => setExpandedRow(expandedRow === (trade.id || idx) ? null : (trade.id || idx))}
+                    onToggleExpand={() => {
+                      setSelectedMember(trade.representative);
+                    }}
                     isWatched={watchedMembers.includes(trade.representative)}
                     idx={idx}
                   />
@@ -305,9 +324,30 @@ export default function CongressWatch() {
       <WatchedSection
         trades={trades}
         watchedMembers={watchedMembers}
-        onUnwatch={() => {}}
+        onUnwatch={(name) => toggleWatch(name)}
         hotSymbols={hotSymbols}
       />
+
+      {selectedMember && (
+        <MemberPanel
+          member={selectedMember}
+          trades={selectedMemberTrades}
+          isWatched={watchedMembers.includes(selectedMember)}
+          onToggleWatch={() => toggleWatch(selectedMember)}
+          onClose={() => setSelectedMember(null)}
+          onResearchStock={(sym) => {
+            setResearchStock({ symbol: sym, name: sym });
+            setSelectedMember(null);
+          }}
+        />
+      )}
+
+      {researchStock && (
+        <StockModal
+          stock={researchStock}
+          onClose={() => setResearchStock(null)}
+        />
+      )}
     </div>
   );
 }
