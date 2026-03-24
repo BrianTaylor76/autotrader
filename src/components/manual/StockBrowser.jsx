@@ -34,8 +34,9 @@ function Highlight({ text, query }) {
 const MARKETS = ["All", "S&P 500", "NASDAQ 100", "ETF", "Crypto", "Small Cap"];
 
 export default function StockBrowser({ onSelect, watchlist = [], onWatchlistChange }) {
+  const defaultTab = new URLSearchParams(window.location.search).get("tab") === "watchlist" ? "My Watchlist" : "All";
   const [search, setSearch] = useState("");
-  const [market, setMarket] = useState("All");
+  const [market, setMarket] = useState(defaultTab);
   const [underHundred, setUnderHundred] = useState(true);
   const [fractionalOnly, setFractionalOnly] = useState(false);
   const [sort, setSort] = useState("Alphabetical");
