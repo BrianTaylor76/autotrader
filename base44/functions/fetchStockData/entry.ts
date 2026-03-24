@@ -178,22 +178,14 @@ Deno.serve(async (req) => {
       try {
         let bars = [];
         if (isCrypto) {
-          const cleanSym = symbol.replace("/","");
+          // Normalize to slash format: AVAXUSD → AVAX/USD
+          const slashSym = symbol.includes("/") ? symbol : symbol.replace(/^([A-Z]+)(USD)$/, "$1/USD");
+          const encodedSym = encodeURIComponent(slashSym);
           const data = await alpacaGet(
-            `https://data.alpaca.markets/v1beta3/crypto/us/bars?symbols=${cleanSym}&timeframe=1Day&start=${start}&end=${end}&limit=180`
+            `https://data.alpaca.markets/v2/crypto/us/bars?symbols=${encodedSym}&timeframe=1Day&start=${start}&end=${end}&limit=180`
           );
-          bars = data.bars?.[cleanSym] || [];
+          bars = data.bars?.[slashSym] || [];
         } else {
-          const data = await alpacaGet(
-            `https://data.alpaca.markets/v2/stocks/${symbol}/bars?timeframe=1Day&start=${start}&end=${end}&limit=180&feed=iex&adjustment=raw`
-          );
-          bars = data.bars || [];
-        }
-        return Response.json({ bars });
-      } catch (e) {
-        return Response.json({ bars: [], error: e.message });
-      }
-    }
 
     // ── ASSET INFO ───────────────────────────────────────────────────────────────
     if (action === "asset") {
