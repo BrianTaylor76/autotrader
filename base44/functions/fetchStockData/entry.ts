@@ -63,25 +63,28 @@ Deno.serve(async (req) => {
       // Crypto — try latest trades first, fall back to bars
       try {
         const cryptoRes = await alpacaGet(
-          `https://data.alpaca.markets/v1beta3/crypto/us/latest/trades?symbols=BTCUSD,ETHUSD`
+          `https://data.alpaca.markets/v2/crypto/us/latest/trades?symbols=BTC%2FUSD,ETH%2FUSD`
         );
         const trades = cryptoRes.trades || {};
-        for (const [sym, trade] of Object.entries(trades)) {
-          results[sym] = { price: trade.p || 0, change_pct: 0 };
+        // Map BTC/USD → BTCUSD for results keys
+        for (const [slashSym, trade] of Object.entries(trades)) {
+          const plainSym = slashSym.replace("/", "");
+          results[plainSym] = { price: trade.p || 0, change_pct: 0 };
         }
         // Get daily bars for change_pct
         try {
           const today = new Date().toISOString().split("T")[0];
           const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
           const barsData = await alpacaGet(
-            `https://data.alpaca.markets/v1beta3/crypto/us/bars?symbols=BTCUSD,ETHUSD&timeframe=1Day&start=${yesterday}&end=${today}&limit=2`
+            `https://data.alpaca.markets/v2/crypto/us/bars?symbols=BTC%2FUSD,ETH%2FUSD&timeframe=1Day&start=${yesterday}&end=${today}&limit=2`
           );
           const bars = barsData.bars || {};
-          for (const [sym, symBars] of Object.entries(bars)) {
+          for (const [slashSym, symBars] of Object.entries(bars)) {
+            const plainSym = slashSym.replace("/", "");
             if (symBars.length >= 2) {
               const prev = symBars[symBars.length - 2].c;
               const cur = symBars[symBars.length - 1].c;
-              if (results[sym]) results[sym].change_pct = prev ? ((cur - prev) / prev) * 100 : 0;
+              if (results[plainSym]) results[plainSym].change_pct = prev ? ((cur - prev) / prev) * 100 : 0;
             }
           }
         } catch (e) {
@@ -92,12 +95,13 @@ Deno.serve(async (req) => {
         // Fallback: 1-min bars
         try {
           const fallback = await alpacaGet(
-            `https://data.alpaca.markets/v1beta3/crypto/us/bars?symbols=BTCUSD,ETHUSD&timeframe=1Min&limit=1`
+            `https://data.alpaca.markets/v2/crypto/us/bars?symbols=BTC%2FUSD,ETH%2FUSD&timeframe=1Min&limit=1`
           );
           const bars = fallback.bars || {};
-          for (const [sym, symBars] of Object.entries(bars)) {
+          for (const [slashSym, symBars] of Object.entries(bars)) {
+            const plainSym = slashSym.replace("/", "");
             if (symBars.length > 0) {
-              results[sym] = { price: symBars[symBars.length - 1].c, change_pct: 0 };
+              results[plainSym] = { price: symBars[symBars.length - 1].c, change_pct: 0 };
             }
           }
         } catch (e2) {
