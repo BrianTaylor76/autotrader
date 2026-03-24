@@ -8,13 +8,28 @@ const HEADERS = {
   "APCA-API-SECRET-KEY": ALPACA_SECRET,
 };
 
-async function alpacaGet(url) {
-  const res = await fetch(url, { headers: HEADERS });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Alpaca ${res.status}: ${text.slice(0, 300)}`);
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function alpacaGet(url, retries = 3) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const res = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(10000) });
+    if (res.status === 429) {
+      if (attempt < retries) {
+        await sleep(5000 * Math.pow(2, attempt));
+        continue;
+      }
+      throw new Error("Rate limited — please try again in a moment");
+    }
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Data unavailable (${res.status})`);
+    }
+    return res.json();
   }
-  return res.json();
+}
+
+function toCryptoSlash(sym) {
+  return sym.includes("/") ? sym : sym.replace(/^([A-Z]+)(USD)$/, "$1/USD");
 }
 
 Deno.serve(async (req) => {
@@ -121,22 +136,44 @@ Deno.serve(async (req) => {
       }
 
       if (cryptoSymbols.length > 0) {
+        // Convert to slash format: ETHUSD → ETH/USD
+        const slashSymbols = cryptoSymbols.map(toCryptoSlash);
         try {
           const cryptoData = await alpacaGet(
-            `https://data.alpaca.markets/v1beta3/crypto/us/snapshots?symbols=${cryptoSymbols.join(",")}`
+            `https://data.alpaca.markets/v2/crypto/us/snapshots?symbols=${slashSymbols.map(encodeURIComponent).join(",")}`
           );
-          for (const [sym, snap] of Object.entries(cryptoData.snapshots || {})) {
+          const snaps = cryptoData.snapshots || {};
+          cryptoSymbols.forEach((origSym, idx) => {
+            const slashSym = slashSymbols[idx];
+            const snap = snaps[slashSym];
+            if (!snap) return;
             const prev = snap.prevDailyBar?.c || 0;
             const cur = snap.dailyBar?.c || snap.latestTrade?.p || 0;
-            results[sym] = {
+            results[origSym] = {
               price: snap.latestTrade?.p || cur,
               change_pct: prev ? ((cur - prev) / prev) * 100 : 0,
               volume: snap.dailyBar?.v || 0,
               vol_ratio: snap.prevDailyBar?.v ? (snap.dailyBar?.v || 0) / snap.prevDailyBar.v : 1,
+              is_fractional: true,
             };
-          }
+          });
         } catch (e) {
-          console.error("Crypto snapshots error:", e.message);
+          // Fallback: fetch latest trades for each crypto symbol individually
+          for (let i = 0; i < cryptoSymbols.length; i++) {
+            try {
+              const slashSym = slashSymbols[i];
+              const tradesData = await alpacaGet(
+                `https://data.alpaca.markets/v2/crypto/us/latest/trades?symbols=${encodeURIComponent(slashSym)}`
+              );
+              const trade = tradesData.trades?.[slashSym];
+              if (trade) {
+                results[cryptoSymbols[i]] = { price: trade.p, change_pct: 0, volume: 0, vol_ratio: 1, is_fractional: true };
+              }
+            } catch (e2) {
+              console.error("Crypto fallback error:", e2.message);
+            }
+            if (i < cryptoSymbols.length - 1) await sleep(300);
+          }
         }
       }
 
