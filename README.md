@@ -4,7 +4,7 @@
 
 View and Edit  your app on [Base44.com](http://Base44.com) 
 
-This project contains everything you need to run your app locally.
+This project contains everything you need to run your app locally.this is an effort to reconnect.
 
 **Edit the code in your local development environment**
 
