@@ -10,8 +10,8 @@
       "schedule": "15 13 * * 1-5"
     },
     {
-      "path": "/api/cron/fetchCongressTrades",
-      "schedule": "0 12 * * 1-5"
+  "path": "/api/fetchCongressTrades",
+  "schedule": "0 12 * * 1-5"
     }
   ],
   "functions": {
