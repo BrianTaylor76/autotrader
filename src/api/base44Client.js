@@ -127,11 +127,15 @@ function createEntity(entityName) {
 const functions = {
   async invoke(functionName, payload = {}) {
     try {
-      const res = await fetch(`${apiBaseUrl}/api/${functionName}`, {
+      const url = `/api/${functionName}`;
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
+      if (res.status === 404) {
+        throw new Error(`Function ${functionName} not found at ${url} NOT_FOUND`);
+      }
       if (!res.ok) {
         const err = await res.text();
         throw new Error(`Function ${functionName} failed: ${err}`);
