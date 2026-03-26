@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, History, Settings, TrendingUp, LineChart, Radio, BookOpen, Landmark, FlaskConical, Monitor, Menu, X, BookmarkCheck } from "lucide-react";
+import { LayoutDashboard, History, Settings, TrendingUp, LineChart, Radio, BookOpen, FlaskConical, Monitor, Menu, X, BookmarkCheck } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 
@@ -10,7 +10,6 @@ const ALL_NAV_ITEMS = [
   { path: "/TradeHistory", label: "History", icon: History },
   { path: "/SignalConsole", label: "Signals", icon: Radio },
   { path: "/StrategySettings", label: "Strategy", icon: Settings },
-  { path: "/CongressWatch", label: "Congress", icon: Landmark },
   { path: "/ManualMode", label: "Manual", icon: Monitor },
   { path: "/Watchlist", label: "Watchlist", icon: BookmarkCheck },
   { path: "/Backtest", label: "Backtest", icon: FlaskConical },
