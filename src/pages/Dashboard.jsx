@@ -39,8 +39,21 @@ export default function Dashboard() {
     onError: (err) => console.error("Toggle bot failed:", err.message),
   });
 
-  const portfolioValue = positions.reduce((sum, p) => sum + (p.market_value || 0), 0);
-  const totalUnrealizedPL = positions.reduce((sum, p) => sum + (p.unrealized_pl || 0), 0);
+  const { data: alpacaAccount } = useQuery({
+  queryKey: ["alpaca_account"],
+  queryFn: async () => {
+    const res = await fetch('/api/getAlpacaAccount', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'paper' }),
+    });
+    return res.json();
+  },
+  refetchInterval: 60000,
+});
+
+const portfolioValue = alpacaAccount?.portfolio_value || 0;
+const totalUnrealizedPL = alpacaAccount?.unrealized_pl || 0;
 
   const today = new Date().toISOString().split("T")[0];
   const todaysTrades = trades.filter((t) => t.executed_at?.startsWith(today));
