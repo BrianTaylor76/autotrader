@@ -1,5 +1,5 @@
 // api/fetchCongressTrades.js
-// Fetches congressional trading data for Congress Watch page
+// Fetches congressional trading data using Finnhub API
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -8,24 +8,50 @@ const supabase = createClient(
   { auth: { persistSession: false } }
 );
 
-const HOUSE_URL = 'https://raw.githubusercontent.com/ayushhirdani13/House-Stock-Watcher-Data/main/all_transactions.json';
-const SENATE_URL = 'https://raw.githubusercontent.com/timothycarambat/senate-stock-watcher-data/main/data/all_transactions.json';
+const FINNHUB_KEY = process.env.FINNHUB_API_KEY;
 
-const PARTY_LOOKUP = {
-  'Tommy Tuberville': 'Republican', 'Markwayne Mullin': 'Republican', 'Bill Hagerty': 'Republican',
-  'Roger Marshall': 'Republican', 'Rand Paul': 'Republican', 'Mike Crapo': 'Republican',
-  'Kevin Hern': 'Republican', 'Pat Fallon': 'Republican', 'Marjorie Taylor Greene': 'Republican',
-  'Rick Scott': 'Republican', 'Marco Rubio': 'Republican', 'Ted Cruz': 'Republican',
-  'Dan Crenshaw': 'Republican', 'Chip Roy': 'Republican', 'Mike Kelly': 'Republican',
-  'Nancy Pelosi': 'Democrat', 'Ro Khanna': 'Democrat', 'Raja Krishnamoorthi': 'Democrat',
-  'Lois Frankel': 'Democrat', 'Josh Gottheimer': 'Democrat', 'Seth Moulton': 'Democrat',
-  'Adam Schiff': 'Democrat', 'Mark Warner': 'Democrat', 'Jon Ossoff': 'Democrat',
-  'Raphael Warnock': 'Democrat', 'John Hickenlooper': 'Democrat', 'Elizabeth Warren': 'Democrat',
-  'Daniel Goldman': 'Democrat', 'Alexandria Ocasio-Cortez': 'Democrat',
-  'Bernie Sanders': 'Independent', 'Angus King': 'Independent',
-};
+// Extended symbol list to get broad congressional trading data
+const CONGRESS_SYMBOLS = [
+  'SPY', 'QQQ', 'AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'TSLA', 'AMD',
+  'JPM', 'BAC', 'WFC', 'GS', 'MS', 'V', 'MA', 'UNH', 'JNJ', 'PFE',
+  'MRNA', 'ABT', 'TMO', 'LMT', 'RTX', 'NOC', 'BA', 'GD', 'XOM', 'CVX',
+];
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+async function fetchFinnhubCongressTrades(symbol) {
+  try {
+    const url = `https://finnhub.io/api/v1/stock/congressional-trading?symbol=${symbol}&token=${FINNHUB_KEY}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return [];
+    const data = await res.json().catch(() => ({}));
+    return data.data || [];
+  } catch {
+    return [];
+  }
+}
 
 function inferParty(name) {
+  const PARTY_LOOKUP = {
+    'Tommy Tuberville': 'Republican', 'Markwayne Mullin': 'Republican',
+    'Bill Hagerty': 'Republican', 'Roger Marshall': 'Republican',
+    'Rand Paul': 'Republican', 'Mike Crapo': 'Republican',
+    'Kevin Hern': 'Republican', 'Pat Fallon': 'Republican',
+    'Marjorie Taylor Greene': 'Republican', 'Rick Scott': 'Republican',
+    'Marco Rubio': 'Republican', 'Ted Cruz': 'Republican',
+    'Dan Crenshaw': 'Republican', 'Chip Roy': 'Republican',
+    'Mike Kelly': 'Republican', 'Nancy Pelosi': 'Democrat',
+    'Ro Khanna': 'Democrat', 'Raja Krishnamoorthi': 'Democrat',
+    'Lois Frankel': 'Democrat', 'Josh Gottheimer': 'Democrat',
+    'Seth Moulton': 'Democrat', 'Adam Schiff': 'Democrat',
+    'Mark Warner': 'Democrat', 'Jon Ossoff': 'Democrat',
+    'Raphael Warnock': 'Democrat', 'John Hickenlooper': 'Democrat',
+    'Elizabeth Warren': 'Democrat', 'Daniel Goldman': 'Democrat',
+    'Alexandria Ocasio-Cortez': 'Democrat', 'Bernie Sanders': 'Independent',
+    'Angus King': 'Independent',
+  };
   if (!name) return 'Unknown';
   const direct = PARTY_LOOKUP[name.trim()];
   if (direct) return direct;
@@ -34,15 +60,6 @@ function inferParty(name) {
     if (key.endsWith(lastName) && lastName.length > 3) return party;
   }
   return 'Unknown';
-}
-
-function normalizeTransaction(raw) {
-  if (!raw) return 'buy';
-  const lower = raw.toLowerCase().replace(/[\s_\-()+]/g, '');
-  if (lower.includes('purchase') || lower.includes('buy') || lower.includes('bought')) return 'buy';
-  if (lower.includes('sale') || lower.includes('sell') || lower.includes('sold')) return 'sell';
-  if (lower.includes('exchange')) return 'exchange';
-  return 'buy';
 }
 
 function calcDaysToDisclose(txnDate, disclosureDate) {
@@ -59,103 +76,119 @@ export default async function handler(req, res) {
   const started_at = new Date().toISOString();
 
   try {
-    const cutoff = new Date();
-    cutoff.setFullYear(cutoff.getFullYear() - 1);
-
-    const [houseRes, senateRes] = await Promise.all([
-      fetch(HOUSE_URL, { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(20000) }).catch(() => null),
-      fetch(SENATE_URL, { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(20000) }).catch(() => null),
-    ]);
-
-    let houseData = [];
-    let senateData = [];
-
-    if (houseRes?.ok) {
-      const raw = await houseRes.json().catch(() => []);
-      houseData = (Array.isArray(raw) ? raw : (raw.data || raw.transactions || [])).map(r => ({ ...r, _chamber: 'House' }));
-    }
-    if (senateRes?.ok) {
-      const raw = await senateRes.json().catch(() => []);
-      senateData = (Array.isArray(raw) ? raw : (raw.data || raw.transactions || [])).map(r => ({ ...r, _chamber: 'Senate' }));
+    if (!FINNHUB_KEY) {
+      return res.status(500).json({ error: 'FINNHUB_API_KEY not configured' });
     }
 
-    const all = [...houseData, ...senateData];
+    // Get user watchlist to include their symbols too
+    const { data: settingsList } = await supabase
+      .from('strategy_settings')
+      .select('watchlist')
+      .order('created_date', { ascending: false })
+      .limit(1);
 
-    const filtered = all.filter(item => {
-      const dateStr = item.disclosure_date || item.transaction_date || item.date || '';
-      if (!dateStr) return false;
-      const d = new Date(dateStr);
-      return !isNaN(d.getTime()) && d >= cutoff;
+    const userWatchlist = settingsList?.[0]?.watchlist || [];
+    const allSymbols = [...new Set([...userWatchlist, ...CONGRESS_SYMBOLS])];
+
+    const allRecords = [];
+    let apiCallCount = 0;
+
+    for (const symbol of allSymbols) {
+      const trades = await fetchFinnhubCongressTrades(symbol);
+      apiCallCount++;
+
+      for (const t of trades) {
+        const transactionRaw = (t.transactionType || t.transaction || '').toLowerCase();
+        const transaction =
+          transactionRaw.includes('purchase') || transactionRaw.includes('buy')
+            ? 'buy'
+            : transactionRaw.includes('sale') || transactionRaw.includes('sell')
+            ? 'sell'
+            : 'buy';
+
+        allRecords.push({
+          symbol: symbol.toUpperCase(),
+          representative: t.name || t.representative || 'Unknown',
+          chamber: t.chamber || 'Unknown',
+          state: t.state || '',
+          party: t.party || inferParty(t.name || ''),
+          transaction,
+          amount_range: t.amount || t.amountRange || '',
+          disclosure_date: (t.filedDate || t.disclosureDate || '').split('T')[0],
+          transaction_date: (t.transactionDate || t.date || '').split('T')[0],
+          description: t.asset || t.assetDescription || symbol,
+          days_to_disclose: calcDaysToDisclose(
+            t.transactionDate || t.date,
+            t.filedDate || t.disclosureDate
+          ),
+        });
+      }
+
+      // Rate limit safety: pause every 10 calls
+      if (apiCallCount % 10 === 0) {
+        await sleep(1000);
+      }
+    }
+
+    // Deduplicate
+    const seen = new Set();
+    const uniqueRecords = allRecords.filter(r => {
+      const key = `${r.symbol}-${r.representative}-${r.transaction_date}-${r.transaction}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
     });
-
-    const records = filtered.map(item => {
-      const symbol = (item.ticker || item.symbol || item.Ticker || item.Symbol || '').toUpperCase().trim();
-      if (!symbol || symbol.length > 10) return null;
-
-      const transactionDate = item.transaction_date || item.TransactionDate || item.date || '';
-      const disclosureDate = item.disclosure_date || item.DisclosureDate || '';
-      const representative = item.representative || item.Representative || item.name || item.senator || 'Unknown';
-      const chamber = item._chamber || 'House';
-      const rawTxn = item.transaction || item.type || item.transaction_type || item.Transaction || '';
-
-      return {
-        symbol,
-        representative,
-        chamber,
-        state: item.state || item.State || '',
-        party: inferParty(representative),
-        transaction: normalizeTransaction(rawTxn),
-        amount_range: item.amount || item.Amount || item.range || '',
-        disclosure_date: disclosureDate.split('T')[0] || '',
-        transaction_date: transactionDate.split('T')[0] || '',
-        description: item.asset_description || item.description || '',
-        days_to_disclose: calcDaysToDisclose(transactionDate, disclosureDate),
-      };
-    }).filter(Boolean);
 
     // Clear and reinsert
-    await supabase.from('congress_trades').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    if (uniqueRecords.length > 0) {
+      await supabase
+        .from('congress_trades')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
 
-    for (let i = 0; i < records.length; i += 100) {
-      await supabase.from('congress_trades').insert(records.slice(i, i + 100));
-    }
+      for (let i = 0; i < uniqueRecords.length; i += 100) {
+        await supabase
+          .from('congress_trades')
+          .insert(uniqueRecords.slice(i, i + 100));
+      }
 
-    // Notify large trades
-    const LARGE_AMOUNTS = ['$50,001', '$100,001', '$250,001', '$500,001', 'Over $1,000,000'];
-    const recent = records.filter(r => {
-      const d = new Date(r.disclosure_date);
-      const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
-      return d >= threeDaysAgo && LARGE_AMOUNTS.some(a => r.amount_range?.includes(a.replace(',', '')));
-    });
-
-    for (const trade of recent.slice(0, 5)) {
-      const action = trade.transaction === 'buy' ? 'bought' : 'sold';
+      // Alert for large recent trades
       const PUSHOVER_USER_KEY = process.env.PUSHOVER_USER_KEY;
       const PUSHOVER_APP_TOKEN = process.env.PUSHOVER_APP_TOKEN;
       if (PUSHOVER_USER_KEY && PUSHOVER_APP_TOKEN) {
-        const formData = new URLSearchParams();
-        formData.append('token', PUSHOVER_APP_TOKEN);
-        formData.append('user', PUSHOVER_USER_KEY);
-        formData.append('title', 'AutoTrader: 🏛️ Congress Alert');
-        formData.append('message', `${trade.representative} ${action} ${trade.amount_range} of ${trade.symbol} on ${trade.transaction_date}`);
-        formData.append('priority', '1');
-        formData.append('sound', 'magic');
-        await fetch('https://api.pushover.net/1/messages.json', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: formData.toString(),
-        }).catch(() => {});
+        const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+        const recentLarge = uniqueRecords.filter(r => {
+          const d = new Date(r.disclosure_date);
+          const amt = (r.amount_range || '').replace(/[,$]/g, '');
+          return d >= threeDaysAgo && (amt.includes('50001') || amt.includes('100001') || amt.includes('250001'));
+        });
+
+        for (const trade of recentLarge.slice(0, 3)) {
+          const action = trade.transaction === 'buy' ? 'bought' : 'sold';
+          const formData = new URLSearchParams();
+          formData.append('token', PUSHOVER_APP_TOKEN);
+          formData.append('user', PUSHOVER_USER_KEY);
+          formData.append('title', '🏛️ Congress Alert');
+          formData.append('message', `${trade.representative} ${action} ${trade.amount_range} of ${trade.symbol} on ${trade.transaction_date}`);
+          formData.append('priority', '1');
+          formData.append('sound', 'magic');
+          await fetch('https://api.pushover.net/1/messages.json', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: formData.toString(),
+          }).catch(() => {});
+        }
       }
     }
 
     return res.status(200).json({
       success: true,
-      count: records.length,
-      house_count: houseData.length,
-      senate_count: senateData.length,
+      count: uniqueRecords.length,
+      symbols_checked: allSymbols.length,
       started_at,
       completed_at: new Date().toISOString(),
     });
+
   } catch (error) {
     console.error('fetchCongressTrades error:', error);
     return res.status(500).json({ error: error.message });
