@@ -8,8 +8,8 @@ const supabase = createClient(
   { auth: { persistSession: false } }
 );
 
-const HOUSE_URL = 'https://house-stock-watcher-data.s3-us-west-2.amazonaws.com/data/all_transactions.json';
-const SENATE_URL = 'https://senatestockwatcher.com/api/transactions_json';
+const HOUSE_URL = 'https://raw.githubusercontent.com/ayushhirdani13/House-Stock-Watcher-Data/main/all_transactions.json';
+const SENATE_URL = 'https://raw.githubusercontent.com/timothycarambat/senate-stock-watcher-data/main/data/all_transactions.json';
 
 const PARTY_LOOKUP = {
   'Tommy Tuberville': 'Republican', 'Markwayne Mullin': 'Republican', 'Bill Hagerty': 'Republican',
@@ -63,8 +63,8 @@ export default async function handler(req, res) {
     cutoff.setFullYear(cutoff.getFullYear() - 1);
 
     const [houseRes, senateRes] = await Promise.all([
-      fetch(HOUSE_URL, { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(15000) }).catch(() => null),
-      fetch(SENATE_URL, { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(15000) }).catch(() => null),
+      fetch(HOUSE_URL, { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(20000) }).catch(() => null),
+      fetch(SENATE_URL, { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(20000) }).catch(() => null),
     ]);
 
     let houseData = [];
