@@ -8,7 +8,7 @@ const supabase = createClient(
   { auth: { persistSession: false } }
 );
 
-const HOUSE_URL = 'https://housestockwatcher.com/api/transactions_json';
+const HOUSE_URL = 'https://house-stock-watcher-data.s3-us-west-2.amazonaws.com/data/all_transactions.json';
 const SENATE_URL = 'https://senatestockwatcher.com/api/transactions_json';
 
 const PARTY_LOOKUP = {
