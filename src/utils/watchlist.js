@@ -5,9 +5,17 @@
  */
 
 export function normalizeWatchlist(wl = []) {
-  return wl.map(item =>
-    typeof item === "string" ? { symbol: item, added_at: null } : item
-  );
+  return wl.map(item => {
+    // Handle JSON string format: '{"symbol":"SPY","added_at":null}'
+    if (typeof item === "string") {
+      try {
+        const parsed = JSON.parse(item);
+        if (parsed && typeof parsed === "object" && parsed.symbol) return parsed;
+      } catch (_) {}
+      return { symbol: item, added_at: null };
+    }
+    return item;
+  });
 }
 
 export function getWatchlistSymbols(wl = []) {
