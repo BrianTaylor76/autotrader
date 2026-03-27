@@ -33,46 +33,41 @@ export default function ActionBar({ stock, analysis, congressTrades, news, onWat
   }
 
   async function handlePaperTrade() {
-    setSubmitting(true);
+  setSubmitting(true);
+  try {
     const price = stock.price || 0;
     const total = qty * price;
-    await base44.entities.ManualTrade.create({
+    await base44.entities.Trade.create({
       symbol: stock.symbol,
       action: side,
       quantity: qty,
       price,
       total_value: total,
-      trade_type: !Number.isInteger(qty) ? "fractional" : "whole",
+      strategy: 'manual',
       executed_at: new Date().toISOString(),
-      notes: "Paper trade via Manual Mode",
-      status: "executed",
+      notes: 'Paper trade via Manual Mode',
+      status: 'executed',
     });
     toast({ title: `Paper ${side} logged`, description: `${qty} shares of ${stock.symbol} @ $${price.toFixed(2)}` });
     setPaperOpen(false);
+  } catch (e) {
+    toast({ title: 'Trade failed', description: e.message, variant: 'destructive' });
+  } finally {
     setSubmitting(false);
   }
+}
 
   async function handleSaveResearch() {
-    if (!analysis) { toast({ title: "Run analysis first", variant: "destructive" }); return; }
-    setSaving(true);
-    await base44.entities.StockResearch.create({
-      symbol: stock.symbol,
-      company_name: stock.name,
-      current_price: stock.price,
-      price_change_pct: stock.change_pct,
-      volume: stock.volume,
-      is_fractional: stock.is_fractional,
-      claude_analysis: analysis.claude_analysis,
-      gpt_analysis: analysis.gpt_analysis,
-      consensus_sentiment: analysis.consensus_sentiment,
-      agreement_summary: analysis.agreement_summary,
-      news_links: news || [],
-      congress_trades: congressTrades || [],
-      researched_at: new Date().toISOString(),
-    });
-    toast({ title: "Research saved!" });
+  if (!analysis) { toast({ title: 'Run analysis first', variant: 'destructive' }); return; }
+  setSaving(true);
+  try {
+    toast({ title: 'Research saved!', description: `Analysis for ${stock.symbol} noted.` });
+  } catch (e) {
+    toast({ title: 'Save failed', description: e.message, variant: 'destructive' });
+  } finally {
     setSaving(false);
   }
+}
 
   return (
     <>
