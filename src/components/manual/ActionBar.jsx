@@ -45,7 +45,6 @@ export default function ActionBar({ stock, analysis, congressTrades, news, onWat
       total_value: total,
       strategy: 'manual',
       executed_at: new Date().toISOString(),
-      notes: 'Paper trade via Manual Mode',
       status: 'executed',
     });
     toast({ title: `Paper ${side} logged`, description: `${qty} shares of ${stock.symbol} @ $${price.toFixed(2)}` });
